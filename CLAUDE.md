@@ -40,20 +40,40 @@ These are deliberate and load-bearing — don't "simplify" them away without che
   something. Never collapse this to a single difficulty ladder.
 - **Ratings are two buttons: `Awesome` / `Could Be Cooler`.** They critique the quest,
   never the person.
-- **All profiles are public.** No private accounts. (Saved collections *can* be private —
-  see the profile mockup.)
-- **In-app camera is required for the photo multiplier** and doubles as quiet anti-cheat
-  verification. Uploaded-from-roll photos still post but don't earn the multiplier.
+- **Privacy is per-post, not per-account.** Every post carries a `visibility` of `public`
+  or `private`; there are no private *accounts* and no follower-approval graph. This is
+  why `follows` isn't in v1 — an account-level private mode is the only thing that needs
+  it. (Saved collections *can* be private too.)
+- **Photos are required on every post, and the bonus for them is folded into the flat
+  post award.** A universal bonus isn't a multiplier, so there's only one `post` ledger
+  kind, one amount. The real multiplier arrives later with BeReal-style live capture,
+  which is genuinely differentiating and can be server-verified by a capture token. The
+  in-app camera is *not* anti-cheat — a camera cannot prove what was in front of it.
 - **Leaderboards are city-scoped** (launch: London). Two axes: Top Quests (best-rated posts)
-  and Top Questers (XP ranking).
+  and Top Questers (XP ranking). **Phase 2** — they depend on median-relative reception XP,
+  which needs weekly volume that doesn't exist at launch.
+- **Anything a user is told becomes a stamped fact; anything that's a live total is
+  computed.** Stamped and append-only: XP ledger rows, `posts.completion_ordinal` ("you're
+  the 4th ever"), future achievement unlocks. Computed fresh and never stored: levels,
+  rarity counts ("3,412 have done this"), leaderboard rank. This is what stops one user's
+  later actions — including deleting their account — from rewriting another user's history.
 
 ## Data model (intent)
 
 Six core tables + the XP ledger. When you touch schema, keep it to this shape unless there's
 a decision recorded above:
 
-`users`, `posts` (= completed quests), `saves`, `ratings`, `follows`, `quest_templates`
-(the "inspired by" lineage / rarity counter), and `xp_ledger` (append-only).
+`users`, `posts` (= completed quests), `post_photos` (1:N — a post can carry several),
+`saves`, `ratings`, `quest_templates`, and `xp_ledger` (append-only).
+
+- **`quest_templates` is also the curated seed index.** The 50–100 hand-curated London
+  quests are template rows with `origin='curated'`; templates born from a redo carry
+  `origin='user'`. Same table, two origins — which is why rarity is just
+  `COUNT(posts WHERE template_id = X)` and needs no separate counter.
+- **`users` is a `public` mirror of `auth.users`**, keyed to the same uuid and populated by
+  a trigger on signup. `handle` is user-chosen and therefore `NULL` until an onboarding
+  screen claims it — it can't exist at trigger time.
+- **`follows` is not in v1.** See the privacy decision above.
 
 ## Conventions
 
@@ -77,13 +97,43 @@ a decision recorded above:
   `EXPO_PUBLIC_SUPABASE_ANON_KEY`. The `EXPO_PUBLIC_` prefix is required or Expo won't expose
   them to the client bundle.
 
+## Testing
+
+Every RLS policy and every XP path ships with a test. Non-negotiable.
+
+- **Postgres — pgTAP via `supabase test db`.** This is where RLS, the XP trigger, the
+  `create_post` RPC, and the level curve are tested.
+- **Client — Jest (`jest-expo`) + React Native Testing Library**, via `npm test`.
+- **E2E — Maestro.** App Store gate, not launch.
+
+- **RLS cannot be tested from Jest.** A Node test using the service key bypasses every
+  policy and passes cheerfully while private posts are world-readable. RLS is only
+  meaningful when a query runs as a real role with a real `auth.uid()`, which is what
+  pgTAP does and a JavaScript runner structurally cannot. If you see an RLS "test" in
+  Jest, it is testing nothing.
+
 ## Gotchas
 
 - **Leaderboard queries can't trust a stored XP column** — there isn't one. Aggregate the
-  ledger. If you see a `users.xp` field, that's a caching bug, not a source of truth.
+  ledger. If you see a `users.xp` field, that's a caching bug, not a source of truth. The
+  same applies to **level**: it's derived from the ledger via `level_for_xp()`, never
+  stored. The one sanctioned cache is a `pg_cron`-refreshed materialized view *derived
+  from* the ledger — never a column that replaces it.
 - **Median-relative scoring needs the week's median first**, so reception XP is finalized on
-  a schedule (weekly), not at post time. Post-time XP = the flat + camera-multiplier portion
-  only.
+  a schedule (weekly), not at post time. Post-time XP = the flat post award only.
+- **The XP ledger's uniqueness key is `(user_id, kind, source_id, template_id, period)`.**
+  Each part earns its place: `source_id` stops a retried insert double-awarding,
+  `template_id` stops delete-then-repost farming (a re-post has a new `post_id`, so
+  `source_id` alone doesn't catch it), and `period` is what lets the phase-2 weekly
+  reception job be re-run or corrected safely.
+- **`SECURITY DEFINER` functions are never inlined by the planner.** So the visibility
+  predicate is written inline on `posts` (the hot path) and only the child tables
+  (`post_photos`, `ratings`, `saves`, storage) go through the `can_view_post()` helper,
+  where the row count is already bounded. A helper on the feed table would cost a
+  per-row function call and degrade non-linearly.
+- **Supabase free-tier projects auto-pause after 7 days of inactivity.** A quiet week
+  between posting a TikTok and the cohort arriving takes the backend down. Keep a
+  `pg_cron` heartbeat or be on a paid plan before any public link goes out.
 
 ## Design System
 
