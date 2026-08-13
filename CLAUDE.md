@@ -85,6 +85,22 @@ a decision recorded above:
   a schedule (weekly), not at post time. Post-time XP = the flat + camera-multiplier portion
   only.
 
+## Design System
+
+Always read `DESIGN.md` before making any visual or UI decision. Fonts, colors, spacing,
+layout, motion and the aesthetic direction are defined there. Do not deviate without
+explicit user approval. In QA and review modes, flag code that doesn't match it.
+
+Three rules from it get broken most often, so they're repeated here:
+
+- **Green `#2C5545` is the brand; red `#D6472A` is the rarity mark.** Red is never a
+  button, link, border, fill, or error. If you want red for a CTA, the answer is ink.
+- **Mono (Martian Mono) is for stamped facts only** — counts, postcodes, cost, dates,
+  tabs. Never prose.
+- **No XP counters, streaks, levels, badges or progress rings on any surface a
+  logged-out visitor can reach.** The stamp block on quest detail is the only place
+  quest attributes appear.
+
 ## gstack
 
 This repo uses **gstack** skills (installed globally). Route work through them instead of
