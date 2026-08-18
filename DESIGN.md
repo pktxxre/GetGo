@@ -234,10 +234,149 @@ Lowercase, playful, blunt-but-kind. "what's new", "could be cooler", "save it",
 "developing…", "taking the scenic route!". Sentence case never; title case never.
 Rarity is stated as fact, never as praise: `4TH EVER`, not "super rare!".
 
+## Shell States
+
+The states that aren't a screen: loading, nothing-here, not-found, broken, offline, and
+getting back. They are specified once, here, and built once, in `components/shell/`. A
+screen that hand-rolls its own loading or error state is a bug — the whole point of this
+section is that no screen has to decide.
+
+Implementation contracts (props, files, tests) live in `SHELL_SPEC.md`. This section is
+the design half: what the user sees and why.
+
+### The state screen, in order
+
+Every full-page state — not-found, load-failed, crashed — is the same five slots in the
+same order. Same furniture, different verb.
+
+```
+  ← BACK                          mono 12/.08em, ink, on bone, 44pt hit area
+  ─────────────────────────────
+  STAMP LABEL                     mono 10/.12em uppercase — what happened
+  Title in Fraunces               30/32, ragged-left — what it means, in voice
+  Body, muted                     Schibsted 14/20 — why, or what to do
+  [ primary action ]              ink button, radius 4 — the one way out
+  escape                          mono underline, optional — the second way out
+```
+
+**Ragged-left, not centered.** Nothing else in this product is centered — the masonry, the
+caption, the stamp block and the quest title are all left-aligned, and `Layout → Quest
+detail` sets the title ragged right. A centered display serif is the reflex on a message
+screen and it reads as a different designer. Text column caps at 34ch.
+
+If a state can only carry three slots, they are **stamp, title, primary action**. The body
+line is the first thing to cut.
+
+### Loading — placeholder, never shimmer
+
+`Motion` bans spinners and skeleton shimmer, and it also says the masonry must never move
+after paint. Those two rules are the same rule: **reserve the geometry, animate nothing.**
+
+- Bone `#E9E2D5` rectangles at the content's true aspect ratio. Zero animation, zero
+  gradient, zero sweep. A placeholder that moves is a shimmer wearing a different name.
+- One line of muted mono beneath: `developing…`.
+- **The stamp block draws its own frame immediately** — the rules and the four
+  `EFFORT / NERVE / COST / RARITY` labels are static, so only the four values are
+  placeheld. The page arrives as a ticket with the ink not yet dry.
+- **Minimum display 300ms once shown.** A placeholder that flashes for 80ms on a fast
+  connection reads as a glitch, not as loading. Don't show one at all below 150ms.
+- Placeholders are hidden from the accessibility tree. A screen reader user hears the
+  loading announcement, not nine empty views.
+
+### Copy — one word, one state
+
+`developing…` means **loading**, and only loading. The darkroom metaphor is about something
+that is in fact developing; an archive that is permanently bare is not.
+
+| State | Copy |
+|---|---|
+| Loading | `developing…` |
+| Empty (list) | `nothing here yet` / "no sidequests in this corner of london. yet." |
+| Not found | `no such quest` / "this one isn't in the archive" |
+| Load failed | `didn't load` / "taking the scenic route" |
+| Crashed | `something broke` / "that's on us" |
+| Offline | `no connection` |
+
+### Back — one control, everywhere
+
+Headers are off globally (`app/_layout.tsx`), so `← BACK` is the only way back that exists.
+It is one component, on every non-root screen, on both platforms.
+
+- Mono 12/.08em in full ink, on bone, below the photograph. **Never floating on an image** —
+  nothing floats on a photograph in this product.
+- 44pt minimum hit area, from an explicit hit slop, not from the glyph.
+- **With no history — a TikTok deep link straight into a quest — it goes to the front
+  door, not nowhere.** This is the common case, not the edge case.
+- Web keeps it too. Browser-back is not an in-page affordance, and the funnel surface is
+  the one that can least afford a dead end.
+
+### Three failures, three verbs
+
+They share the component and differ in the only thing that matters — what the user should
+do next. Collapsing them is how a network blip ends up telling someone a quest was deleted.
+
+| | Not found | Load failed | Crashed |
+|---|---|---|---|
+| **Cause** | the thing is gone | the network flaked | our code threw |
+| **Primary** | `browse london` | `try again` | `back to london` |
+| **Escape** | — | `browse london` | — |
+| **Retry helps?** | no | yes | no |
+
+`--error #8A3B2E` appears on the **mono stamp label only**. Never on the button, never as a
+border, never as a fill. The title carries the meaning in words, so error state never
+depends on a 10px label being noticed. Green and red are still spoken for.
+
+### Offline — never blank what already loaded
+
+The audience is outdoors in London on mobile data. Losing signal mid-scroll must not
+replace loaded content with an error screen.
+
+- One brick strip, full width, mono 10/.12em uppercase, `no connection`, at the very top.
+- Content stays exactly where it was. Self-dismisses when connection returns.
+- **Rule, not a component detail: a failed refresh never destroys good content.** Failure
+  is additive — a banner or an inline row, never a replacement.
+
+### Action failures stay where the action was
+
+A save that fails surfaces inline, next to the thing that failed, with retry attached. Not
+a toast — a toast steals the corner and leaves before it's read, and the whole delight
+budget in this product is the save. The page does not navigate away from what you were
+doing.
+
+### Accessibility floor
+
+Measured, not assumed:
+
+- `--ink-muted` on `--ground` is **5.00:1**; `--error` on `--ground` is **6.62:1**. Both
+  clear AA. The shell leans on muted ink for most of its copy, so this is load-bearing.
+- Touch targets 44pt minimum, everywhere, including `← BACK` and the tabs.
+- State screens announce as live regions; loading→loaded transitions are announced.
+- **`prefers-reduced-motion` is honored once, in the shell, for everything** — the shared-
+  element photo transition, the underline slide, and the save stamp's overshoot and haptic.
+- Visible focus on web. The mobile-web funnel is the accessibility surface that gets audited.
+
+### Responsive
+
+State screens are not exempt from the breakpoints. Text column 34ch, block left-aligned
+within the content column, top-aligned rather than vertically centered above 720px — a
+34ch paragraph floating in the middle of a 1180px viewport is not a design.
+
+### Deleted on purpose
+
+Spinners · skeleton shimmer · toasts · a generic "Something went wrong." · modal error
+dialogs · full-page blanking on refresh failure · retry buttons on errors that retrying
+cannot fix.
+
 ## Decisions Log
 
 | Date | Decision | Rationale |
 |---|---|---|
+| 2026-08-18 | Loading is a static layout placeholder, never a shimmer | "No skeleton shimmer" and "the masonry must never move after paint" are the same rule — reserving geometry is the only way to avoid reflow, and animating it is the only part that was ever banned |
+| 2026-08-18 | `developing…` belongs to loading; empty gets its own copy | Both states shared the word (`app/index.tsx` used it for empty), leaving a cold visitor unable to tell "fetching" from "genuinely bare" — the two states needing opposite reactions |
+| 2026-08-18 | One `← BACK`, every non-root screen, both platforms | Headers are off globally, so native had no visible way back at all; deep-linked TikTok arrivals have no history, so it falls back to the front door |
+| 2026-08-18 | Three error states from one component, not one generic screen | A single screen makes every network blip read as "this quest was deleted" — the user doesn't retry, and the save is lost at the exact gate being measured |
+| 2026-08-18 | State screens ragged-left, not centered | Centered display serif is the message-screen reflex; nothing else in the product is centered, and it doesn't scale past 720px |
+| 2026-08-18 | Offline banner in the baseline; failure never blanks loaded content | Users are outdoors on mobile data; "don't destroy good content on a failed refresh" is architectural and can't be retrofitted cheaply |
 | 2026-08-13 | Initial design system created | /design-consultation, after competitive research (Beli, Letterboxd, Polarsteps, Atlas Obscura, thesidequest.world) and an independent outside design voice |
 | 2026-08-13 | Warm bone ground, not dark | Competitor owns `#0A0A0A` + acid yellow at 50k users; bone also color-corrects amateur photos for free and signals "document" rather than "app" |
 | 2026-08-13 | Fraunces + Schibsted Grotesk + Martian Mono | Two independent voices picked Fraunces cold; Schibsted avoids the competitor's DM Sans; mono scoped to facts only so it doesn't read as telemetry |
