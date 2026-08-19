@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "GetGo",
+    "slug": "getgo",
+    "scheme": "getgo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F3EEE4",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.getgo.app"
+    },
+    "android": {
+      "package": "com.getgo.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#F3EEE4",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-image",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "GetGo uses the camera so you can photograph the sidequest you just did."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "GetGo uses your location to show sidequests near you and tag where you did yours."
+        }
+      ]
+    ]
+  }
+}
