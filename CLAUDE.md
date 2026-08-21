@@ -10,6 +10,9 @@ query. London-only at launch.
 > intentionally lean. Standard React Native / Expo / Supabase conventions are assumed —
 > don't restate them here.
 
+> **Continuing the build? Read `HANDOFF_NEXT.md` first** — it holds the current state and the
+> recommended next step, newest entry at the top.
+
 ## Stack
 
 - **App:** React Native via **Expo** (managed workflow), TypeScript.

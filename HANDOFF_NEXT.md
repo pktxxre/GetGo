@@ -1,9 +1,34 @@
 # Handoff — start here (next session)
 
-Written 2026-08-19. This is the "what do I do next" note that follows the build in commits
-`f147269` (backend) and `e714cb1` (client scaffold + shell). For the *why* behind decisions,
-read `CLAUDE.md`, `DESIGN.md`, `SHELL_SPEC.md`, and the original `HANDOFF.md` — this file
-does not restate them.
+For the *why* behind decisions, read `CLAUDE.md`, `DESIGN.md`, `SHELL_SPEC.md`, and the
+original `HANDOFF.md`. This file is the running "what do I do next" log — newest update first.
+
+## ▶ Current state (2026-08-21) and the next move
+
+**The core loop is built and shipped:** browse feed (T12) → quest detail (T13) → email-OTP
+sign-in → the real `save it` stamp. It's in **PR #1** (`https://github.com/pktxxre/GetGo/pull/1`),
+**OPEN / not yet merged**, on branch `pktxxre/gstack-setup-claude-md`. Because it isn't merged,
+`main` doesn't have this work — keep building on **this branch / this workspace**, not a fresh
+branch off main. Land PR #1 first if you want a clean base.
+
+Verified at ship: **98 pgTAP · 44 Jest · tsc clean · web build (all routes)**, plus the
+auth+save loop proven live against the local stack.
+
+**Do next — the post-creation flow (T13-post):** an image-picker/camera capture feeding the
+already-tested `create_post` RPC, so a signed-in user can post a quest (not just save one).
+Pair it with an **onboarding handle claim** (`users.handle` is NULL until claimed; bylines
+currently render `@null` for a brand-new user). Auth (built this session) unblocks both.
+
+Also open, all non-blocking: cross-restart session persistence (needs
+`@react-native-async-storage/async-storage`), a mint-template RPC for saving template-less
+posts, the hosted backend (migrations + OTP email template not applied there), the detail
+location-map strip, the system-wide image grade, S7/S8/S10/S11 shell, and the feed fact-line
+truncation nit. Full detail in the dated log below.
+
+**Run it:** local Supabase must be up (`colima start && npx supabase start`); `.env` already
+points at `http://127.0.0.1:54321`; OTP codes land in Mailpit (`http://127.0.0.1:54324`);
+`npx expo start` then `i`/`w`. Email-template edits in `supabase/config.toml` need
+`supabase stop && supabase start`, not `db reset`.
 
 ---
 
