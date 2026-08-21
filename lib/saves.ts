@@ -11,6 +11,18 @@ import { supabase } from './supabase';
  * a post has no template rather than pretend.
  */
 
+/**
+ * Mint (or fetch) the quest template for a first-of-its-kind post, so it can be saved (015).
+ * Idempotent and concurrency-safe server-side: returns the existing template_id if the post
+ * already has one, otherwise mints `origin='user'` and backfills the origin post as the 1st
+ * ever. Only called when a post's `templateId` is null; a curated/templated post saves directly.
+ */
+export async function mintTemplateFromPost(postId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('mint_template_from_post', { p_post_id: postId });
+  if (error) throw error;
+  return data as string;
+}
+
 /** Idempotent: saving twice is a no-op (unique user_id+template_id). Returns nothing on success. */
 export async function saveQuest(userId: string, templateId: string): Promise<void> {
   const { error } = await supabase

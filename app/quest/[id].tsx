@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { color, layout, space, type } from '../../theme/tokens';
 import { useQuest } from '../../hooks/useQuest';
 import { useSession } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
-import { isSaved as fetchIsSaved, saveQuest } from '../../lib/saves';
+import { isSaved as fetchIsSaved, mintTemplateFromPost, saveQuest } from '../../lib/saves';
 import { StateScreen } from '../../components/shell/StateScreen';
 import { BackLink } from '../../components/shell/BackLink';
 import { StampBlock } from '../../components/quest/StampBlock';
@@ -41,11 +41,14 @@ export default function QuestDetail() {
   }, [session?.user?.id, templateId]);
 
   const doSave = async (userId: string) => {
-    if (!templateId) return;
+    if (!quest) return;
     setSaveError(null);
     setSaving(true);
     try {
-      await saveQuest(userId, templateId);
+      // A first-of-its-kind post has no template yet — mint one so it can be saved (015).
+      // Curated/templated posts skip the mint and save directly.
+      const tid = templateId ?? (await mintTemplateFromPost(quest.id));
+      await saveQuest(userId, tid);
       setSaved(true); // the SaveStamp lands on the stamp block
     } catch {
       setSaveError('couldn’t save — give it another go.');
@@ -125,16 +128,29 @@ export default function QuestDetail() {
       <View style={styles.actionBar}>
         {saveError ? <Text style={styles.saveError}>{saveError}</Text> : null}
         <Pressable
-          style={[styles.saveButton, (saved || saving || !templateId) && styles.saveButtonDisabled]}
+          style={[styles.saveButton, (saved || saving) && styles.saveButtonDisabled]}
           onPress={onSavePress}
-          disabled={saved || saving || !templateId}
+          disabled={saved || saving}
           accessibilityRole="button"
           accessibilityLabel="save it"
         >
-          <Text style={styles.saveLabel}>
-            {!templateId ? 'can’t save this one yet' : saved ? 'saved' : saving ? 'saving…' : 'save it'}
-          </Text>
+          <Text style={styles.saveLabel}>{saved ? 'saved' : saving ? 'saving…' : 'save it'}</Text>
         </Pressable>
+
+        {/* The second verb. Only offered once the quest is a real template — a first-of-its-kind
+            post is saved first (which mints, 015), then it can be redone. Opens compose in redo
+            mode, carrying the template so create_post stamps the next ordinal. */}
+        {templateId ? (
+          <Pressable
+            onPress={() =>
+              router.push({ pathname: '/compose', params: { templateId, questTitle: quest.title ?? '' } })
+            }
+            hitSlop={8}
+            accessibilityRole="button"
+          >
+            <Text style={styles.redoLink}>i did this too</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       {showAuth ? <AuthSheet onClose={() => setShowAuth(false)} onAuthed={onAuthed} /> : null}
@@ -220,5 +236,11 @@ const styles = StyleSheet.create({
   saveLabel: {
     ...type.buttonLabel,
     color: color.ground,
+  },
+  redoLink: {
+    ...type.dataLine,
+    color: color.inkMuted,
+    textDecorationLine: 'underline',
+    alignSelf: 'center',
   },
 });

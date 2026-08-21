@@ -2,8 +2,10 @@ import { render, screen, fireEvent } from '@testing-library/react-native';
 import type { QuestDetail } from '../lib/quest';
 
 const mockReplace = jest.fn();
+const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: () => ({ replace: mockReplace, back: jest.fn(), canGoBack: () => false }),
+  router: { push: (...a: any[]) => mockPush(...a), replace: (...a: any[]) => mockReplace(...a) },
   useLocalSearchParams: () => ({ id: 'p1' }),
 }));
 
@@ -18,9 +20,11 @@ jest.mock('../lib/auth', () => ({ useSession: () => mockSession }));
 
 const mockSaveQuest = jest.fn().mockResolvedValue(undefined);
 const mockIsSaved = jest.fn().mockResolvedValue(false);
+const mockMint = jest.fn().mockResolvedValue('minted-t9');
 jest.mock('../lib/saves', () => ({
   saveQuest: (...a: any[]) => mockSaveQuest(...a),
   isSaved: (...a: any[]) => mockIsSaved(...a),
+  mintTemplateFromPost: (...a: any[]) => mockMint(...a),
 }));
 
 import QuestDetailScreen from '../app/quest/[id]';
@@ -50,6 +54,8 @@ beforeEach(() => {
   mockReplace.mockClear();
   mockSaveQuest.mockClear();
   mockIsSaved.mockClear();
+  mockMint.mockClear();
+  mockPush.mockClear();
   mockSession = signedOut;
 });
 
@@ -80,7 +86,35 @@ describe('QuestDetail screen', () => {
     fireEvent.press(screen.getByText('save it'));
     expect(await screen.findByText('saved')).toBeTruthy(); // button resting state
     expect(mockSaveQuest).toHaveBeenCalledWith('u1', 't1');
+    expect(mockMint).not.toHaveBeenCalled(); // templated post skips the mint
     expect(screen.getByText(/^SAVED · /)).toBeTruthy(); // the stamp landed
+  });
+
+  it('saving a first-of-its-kind post mints a template first, then saves with it', async () => {
+    mockSession = signedIn;
+    // templateId null → the post has no template yet; the button is enabled, not disabled.
+    mockQuestState = { quest: quest({ templateId: null }), status: 'ready', reload };
+    render(<QuestDetailScreen />);
+    fireEvent.press(screen.getByText('save it'));
+    expect(await screen.findByText('saved')).toBeTruthy();
+    expect(mockMint).toHaveBeenCalledWith('p1'); // minted from the post id
+    expect(mockSaveQuest).toHaveBeenCalledWith('u1', 'minted-t9'); // saved against the mint
+  });
+
+  it('offers "i did this too" on a real quest, routing to compose in redo mode', () => {
+    mockQuestState = { quest: quest(), status: 'ready', reload };
+    render(<QuestDetailScreen />);
+    fireEvent.press(screen.getByText('i did this too'));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/compose',
+      params: { templateId: 't1', questTitle: 'find the herons in kyoto garden' },
+    });
+  });
+
+  it('hides "i did this too" on a first-of-its-kind post (no template to redo yet)', () => {
+    mockQuestState = { quest: quest({ templateId: null }), status: 'ready', reload };
+    render(<QuestDetailScreen />);
+    expect(screen.queryByText('i did this too')).toBeNull();
   });
 
   it('a missing/invisible post is notFound, not an error', () => {

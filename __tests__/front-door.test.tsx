@@ -7,6 +7,10 @@ import type { FeedItem } from '../lib/feed';
 const mockReplace = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: () => ({ replace: mockReplace, back: jest.fn(), canGoBack: () => false }),
+  router: { push: jest.fn(), replace: mockReplace },
+  // The focus refetch is a no-op here — the front door's job is to render the right surface
+  // per status, not to re-fetch. (refresh-on-focus behaviour lives with useFeed.)
+  useFocusEffect: () => {},
 }));
 
 let mockFeedState: { items: FeedItem[]; status: string; reload: jest.Mock };

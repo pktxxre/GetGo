@@ -7,7 +7,7 @@
 -- real authenticated caller hits, while letting the test capture the returned jsonb.
 
 begin;
-select plan(16);
+select plan(21);
 
 insert into auth.users (id, instance_id, email) values
   ('88888888-8888-8888-8888-888888888888', '00000000-0000-0000-0000-000000000000', 'u1@getgo.test'),
@@ -88,6 +88,47 @@ select throws_ok(
   '23514', null,
   'a post with no photos is rejected'
 );
+
+-- ── photo dimensions are stored when supplied, so the masonry reserves geometry (012) ──
+set local request.jwt.claims to '{"sub":"88888888-8888-8888-8888-888888888888"}';
+select public.create_post(
+  p_post_id       => 'c5000000-0000-0000-0000-000000000000',
+  p_photo_paths   => array['photos/dim1.jpg','photos/dim2.jpg'],
+  p_template_id   => '66666666-6666-6666-6666-666666666666',
+  p_photo_widths  => array[1200, 800],
+  p_photo_heights => array[1500, 800]
+);
+select is(
+  (select width::int  from public.post_photos where post_id = 'c5000000-0000-0000-0000-000000000000' and idx = 0),
+  1200, 'first photo width is stored');
+select is(
+  (select height::int from public.post_photos where post_id = 'c5000000-0000-0000-0000-000000000000' and idx = 1),
+  800,  'second photo height is stored, zipped by position');
+
+-- ── omitting dims still works and leaves them NULL (pre-012 behaviour preserved) ────
+select public.create_post(
+  p_post_id     => 'c6000000-0000-0000-0000-000000000000',
+  p_photo_paths => array['photos/nodim.jpg'],
+  p_template_id => '66666666-6666-6666-6666-666666666666'
+);
+select is(
+  (select width from public.post_photos where post_id = 'c6000000-0000-0000-0000-000000000000' and idx = 0),
+  null, 'a post without dims stores NULL width (feed falls back to default aspect)');
+
+-- ── the quest name (p_title) is stored, and NULL when omitted (013/014) ─────────────
+set local request.jwt.claims to '{"sub":"88888888-8888-8888-8888-888888888888"}';
+select public.create_post(
+  p_post_id     => 'c7000000-0000-0000-0000-000000000000',
+  p_photo_paths => array['photos/named.jpg'],
+  p_template_id => '66666666-6666-6666-6666-666666666666',
+  p_title       => 'swim the ponds at dawn'
+);
+select is(
+  (select title from public.posts where id = 'c7000000-0000-0000-0000-000000000000'),
+  'swim the ponds at dawn', 'p_title is stored on the post');
+select is(
+  (select title from public.posts where id = 'c5000000-0000-0000-0000-000000000000'),
+  null, 'a post created without p_title has NULL title');
 
 select * from finish();
 rollback;

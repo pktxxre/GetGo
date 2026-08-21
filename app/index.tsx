@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View, Pressable, useWindowDimensions } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { color, layout, space, type } from '../theme/tokens';
 import { useFeed } from '../hooks/useFeed';
 import { useDelayedLoading } from '../hooks/useDelayedLoading';
@@ -24,8 +25,21 @@ export default function QuestList() {
   const { width } = useWindowDimensions();
   const columns = columnCountForWidth(width);
 
-  const { items, status, reload } = useFeed();
+  const { items, status, reload, refresh } = useFeed();
   const showLoading = useDelayedLoading(status === 'loading');
+
+  // Quietly re-fetch when the feed regains focus (e.g. back from posting), so a new post
+  // shows without a placeholder flash. Skip the first focus — the initial load already ran.
+  const firstFocus = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (firstFocus.current) {
+        firstFocus.current = false;
+        return;
+      }
+      refresh();
+    }, [refresh]),
+  );
 
   // A failed load takes the whole surface — retry is the one move that can work here
   // (SHELL_SPEC state matrix: Quest list · Error → StateScreen kind="failed").
@@ -36,6 +50,7 @@ export default function QuestList() {
   const countLabel = status === 'ready' ? `LONDON · ${items.length} SIDEQUESTS` : 'LONDON';
 
   return (
+    <View style={styles.root}>
     <ScrollView
       style={styles.page}
       contentContainerStyle={styles.pageContent}
@@ -91,10 +106,26 @@ export default function QuestList() {
         </View>
       ) : null}
     </ScrollView>
+
+      {/* The one create affordance — a pinned ink pill, always reachable while the chrome above
+          scrolls away. Ink, not a red/green FAB (DESIGN.md → colour rules). */}
+      <Pressable
+        style={styles.compose}
+        onPress={() => router.push('/compose')}
+        accessibilityRole="button"
+        accessibilityLabel="post a sidequest"
+      >
+        <Text style={styles.composeLabel}>post a sidequest</Text>
+      </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: color.ground,
+  },
   page: {
     flex: 1,
     backgroundColor: color.ground,
@@ -170,5 +201,26 @@ const styles = StyleSheet.create({
     color: color.inkMuted,
     textAlign: 'center',
     maxWidth: 280,
+  },
+  compose: {
+    position: 'absolute',
+    bottom: space.xxl,
+    alignSelf: 'center',
+    height: 48,
+    paddingHorizontal: space.xl,
+    borderRadius: 24,
+    backgroundColor: color.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+    // A soft lift off the feed so it never reads as part of a tile.
+    shadowColor: color.ink,
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  composeLabel: {
+    ...type.buttonLabel,
+    color: color.ground,
   },
 });
