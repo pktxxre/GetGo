@@ -33,14 +33,14 @@ select is(
 );
 
 -- ── handle uniqueness ───────────────────────────────────────────────────────────
-update public.users set handle = 'scenic-route' where id = :'user_one';
+update public.users set handle = 'scenic_route' where id = :'user_one';
 
 insert into auth.users (id, instance_id, email)
 values ('22222222-2222-2222-2222-222222222222',
         '00000000-0000-0000-0000-000000000000', 'two@getgo.test');
 
 select throws_ok(
-  $$ update public.users set handle = 'scenic-route'
+  $$ update public.users set handle = 'scenic_route'
      where id = '22222222-2222-2222-2222-222222222222' $$,
   '23505',
   null,
