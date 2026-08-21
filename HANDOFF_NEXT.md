@@ -3,6 +3,165 @@
 For the *why* behind decisions, read `CLAUDE.md`, `DESIGN.md`, `SHELL_SPEC.md`, and the
 original `HANDOFF.md`. This file is the running "what do I do next" log — newest update first.
 
+## ▶ START HERE — current state (2026-08-21, end of session)
+
+**PR #1 is merged into `main`** (browse → save core loop). This session built on top and is
+**shipping now** via `/ship` from branch `pktxxre/continue-building` (a new PR off `main`). Once
+that lands, `main` has the full two-sided loop. Until then the work below lives on that branch.
+
+**What now works, end to end (the whole loop):**
+- **Onboarding handle claim** — first sign-in picks a handle (no more `@null` bylines).
+- **Post** a first-of-its-kind sidequest — camera/library photo + optional quest name + caption
+  + per-post public/private → `create_post`. Pinned "post a sidequest" pill on the feed.
+- **Save** any post — a first-of-its-kind **mints** a `quest_templates` row (`origin='user'`) on
+  first save and backfills the origin post as the 1st ever, so user quests propagate.
+- **Redo** ("i did this too") — post your own completion of an existing quest; rarity climbs.
+- Photo dimensions flow through `create_post` (no masonry reflow); feed refreshes on return.
+
+**Verified at ship:** pgTAP **137**, Jest **60**, `tsc` clean, web build OK, plus live e2e for
+the post / mint / redo loops against the local stack. Migrations through **015**.
+
+**Recommended next (all unblocked):** effort/nerve/cost + location capture in compose (minted
+templates currently show "—" for axes), multi-photo compose, `delete_account` (T9), then the
+**hosted-backend migration** (hosted project still has no migrations applied) and cross-restart
+session persistence (`@react-native-async-storage/async-storage`). Full detail in the dated log
+below. **To run locally:** `colima start && npx supabase start`, `.env` points at local, OTP
+codes land in Mailpit (`:54324`), `npx expo start`.
+
+## Update — 2026-08-21 (cont.): redo — the second verb, loop is now two-sided (uncommitted)
+
+"I did this too" — a user can now post their own completion of an existing quest, so rarity
+climbs and the same quest accumulates posts. Pure client wiring: the backend (`create_post`
+with `p_template_id` → next ordinal, template-keyed XP) was already built and pgTAP-proven, so
+no new migration.
+
+- **`lib/posts.ts`** — `CreatePostInput.templateId`; `createPost` passes `p_template_id`.
+- **`app/compose.tsx`** — two modes, one screen. Fresh (`/compose`): name your quest.
+  Redo (`/compose?templateId=…&questTitle=…`): the name is fixed by the template, so the
+  screen shows it ("you did this too" + the quest name) and hides the name field, passing the
+  templateId so `create_post` stamps the next ordinal.
+- **`app/quest/[id].tsx`** — an "i did this too" secondary link in the action bar, shown only
+  when the quest has a template (a first-of-its-kind is saved first, which mints, then it's
+  redoable). Routes to compose in redo mode.
+- **Verified** — Jest **60** (+4: redo-link shown/hidden + routes with params; compose fresh
+  vs redo → what it hands `createPost`), `tsc` clean, web build OK. Live e2e: two users redo a
+  seeded quest → ordinals climb (2, 3), rarity → 3, each earns the 50 XP post award. ✓
+
+**Next open:** location + effort/nerve/cost capture in compose (so minted templates aren't
+axis-less), multi-photo compose, delete_account (T9), hosted-backend migration, async-storage
+session persistence, feed refresh already lands but the new redo/first posts show on return.
+
+## Update — 2026-08-21 (cont.): mint-template on first save — the loop propagates (uncommitted)
+
+Specced (**issue #2**, `/spec`) and built. A first-of-its-kind post is no longer a dead end: the
+first time someone saves it, a `quest_templates` row is minted (`origin='user'`) and the origin
+post is backfilled as the 1st ever, so user quests now propagate — the "community is the content
+engine" thesis holds. Decisions taken in the spec: author names the quest at post time (D1=A),
+save triggers the mint (D2=A, redo deferred), mint is a standalone RPC (D3=A).
+
+- **`013_post_title.sql`** — `posts.title` (nullable, 1..80 CHECK). A post carries its own quest
+  name; the mint copies it into the template.
+- **`014_create_post_title.sql`** — appends `p_title` to `create_post` (positional-compatible,
+  same additive-tail rule as 012).
+- **`015_mint_template.sql`** — `mint_template_from_post(uuid)`: SECURITY DEFINER, inline
+  `can_view_post` guard (can't mint a private post you can't see), advisory-locked on post id
+  (concurrent saves mint exactly once), idempotent (returns existing template_id), title
+  fallback chain `post.title → left(caption,60) → 'untitled sidequest'`, slug
+  `kebab(title)+postid-fragment`, backfills origin post to `completion_ordinal = 1`. No XP (the
+  post's award already landed at create_post).
+- **Client** — `lib/posts.ts` (`p_title`), `app/compose.tsx` (optional "name your quest" field),
+  `lib/quest.ts` (detail title = `coalesce(template.title, post.title)`), `lib/saves.ts`
+  (`mintTemplateFromPost`), `app/quest/[id].tsx` (`doSave` mints-then-saves when `templateId`
+  null; the save button is now enabled for template-less posts — no more "can't save this one yet").
+- **Scope note:** the feed tile shows caption, not title, so no feed change (spec's "feed tile
+  likewise" didn't apply). Minted templates carry NULL neighbourhood + NULL axes (no source
+  yet) — the stamp shows "—" until a later location/axes-capture spec.
+- **Verified** — pgTAP **137** (+22: 013 ×5, 015 ×15, 007 +2), Jest **56** (+1), `tsc` clean,
+  web build OK. Live e2e: author posts a first-of-its-kind → a *different* user saves →
+  template minted (`origin='user'`, `created_by`=saver, title copied), post backfilled to
+  ordinal 1, save row present, second mint idempotent, rarity=1. All ✓.
+
+**Next open:** **redo** (posting your own completion against an existing template — the second
+verb, deferred from this spec), location + effort/nerve/cost capture in compose (so minted
+templates aren't axis-less), multi-photo compose, hosted-backend migration, async-storage
+session persistence.
+
+## Update — 2026-08-21 (cont.): finish T13-post — photo dims + feed refresh (uncommitted)
+
+Two polish pieces that close gaps the post flow opened:
+
+- **`supabase/migrations/012_photo_dims_in_create_post.sql`** — `create_post` now takes
+  `p_photo_widths`/`p_photo_heights` (appended, defaulted, so every existing positional caller
+  stays valid) and stores them on `post_photos`. This was 008's flagged "later task": before it,
+  RPC-made photos had NULL dims → the feed fell back to a default aspect → the masonry
+  **reflowed** when the real image loaded, which DESIGN.md forbids. `lib/posts.ts` + `compose.tsx`
+  now pass the picker's asset dims through. pgTAP **115** (+3 in `007_create_post_test.sql`:
+  dims stored, zipped by position, and NULL-safe when omitted).
+- **`hooks/useFeed.ts` + `app/index.tsx`** — a quiet `refresh` (re-fetch without flipping to
+  `loading`) wired to `useFocusEffect`, skipping the first focus. Returning to the feed after
+  posting now shows the new post with no placeholder flash. (This resolves the "feed
+  refresh-on-return" gap noted below.)
+- **Verified** — pgTAP **115**, Jest **55**, `tsc` clean, web build OK. Live e2e re-run:
+  `create_post` with dims → `post_photos` row carries width/height (1080×1350). ✓
+
+## Update — 2026-08-21 (cont.): post-creation flow — the create side of the loop (uncommitted)
+
+A signed-in user can now **post** a sidequest, not just save one. The loop is now two-sided:
+browse → save AND browse → post. Built a *first-of-its-kind* post (no template) — `create_post`
+already handles a NULL template (NULL ordinal, source-keyed XP), so the mint-template RPC was
+**not** a blocker; it's still the follow-up for making a posted quest redoable by others.
+
+- **`supabase/migrations/011_photos_storage.sql`** — the `photos` storage bucket (public read)
+  + storage.objects RLS: a user may only write under their own uuid prefix
+  (`{user_id}/{post_id}/{idx}.{ext}`), plus owner-delete for orphan cleanup. This was the real
+  missing prerequisite — nothing gave uploads a home before (the feed only worked because seed
+  rows store full picsum URLs). pgTAP **112** (+6: `011_photos_storage_test.sql`).
+- **`lib/posts.ts`** — `createPost` (upload photos → `create_post` RPC, client-generated post
+  id for idempotency) + pure `photoObjectKey`/`extFromUri`/`uuidv4` (Jest-proven).
+- **`app/compose.tsx`** — the compose screen: photo (camera or library via **expo-image-picker**,
+  newly added + plugin in app.json), caption, per-post PUBLIC/PRIVATE toggle, sticky `post it`.
+  Auth-gated at the action (reuses AuthSheet, same shape as save). On success it lands on the
+  new quest's detail, so the poster sees their own post live through the feed RLS.
+- **`app/index.tsx`** — a pinned ink `post a sidequest` pill (always reachable; ink, not a
+  red/green FAB per DESIGN colour rules).
+- **Verified** — pgTAP **112**, Jest **55** (+4: `posts.test.ts`), `tsc` clean, web build OK
+  (`/compose` route). A throwaway node e2e proved the whole loop live: OTP sign-in → handle
+  claim → upload under own prefix → `create_post` (+50 XP, level 2) → post visible via feed RLS
+  with photo + byline → cross-prefix upload blocked. All ✓.
+
+**Next / still open:** the **mint-template RPC** (so a first-of-its-kind post becomes redoable —
+noted in 005_social.sql), multi-photo posts (the RPC + masonry already support N; compose takes
+one), threading photo **dimensions** through create_post (masonry falls back to a default aspect
+until then), post-time **location** capture (create_post takes lon/lat/city; compose doesn't
+send them yet), and feed **refresh-on-return** (compose lands on detail, but a plain back to the
+feed won't show the new post until reload). Plus the still-open items below (async-storage
+session persistence, hosted backend not migrated, image grade, S7–S11 shell).
+
+## Update — 2026-08-21: onboarding handle claim (uncommitted)
+
+A first-time user is now asked to pick a handle right after their first sign-in, so quests get
+a real byline instead of `@null`. Small, self-contained; unblocks bylines for the post flow.
+
+- **`supabase/migrations/010_handle_format.sql`** — a `users_handle_format` CHECK (3–20 of
+  `[a-z0-9_]`, NULL still allowed). The DB is the real guard: RLS lets a user write their own
+  row, so handle format can't be trusted to the client. Lowercase-only keeps the existing
+  UNIQUE index effectively case-insensitive. `001_users_test.sql`'s fixture handle changed
+  `scenic-route` → `scenic_route` (the hyphen now violates the check).
+- **`lib/profile.ts`** — pure `normalizeHandle`/`validateHandle` (mirror the CHECK) + async
+  `fetchMyHandle`/`claimHandle`; `claimHandle` maps a 23505 to `HandleTakenError` so the UI can
+  say "taken" specifically.
+- **`components/auth/AuthSheet.tsx`** — a third step folded into the one auth surface:
+  email → code → **handle** (first time only; a returning user with a handle skips straight to
+  `onAuthed`, so the save still fires immediately). No new screen/route, no app-wide gate.
+- **Tests** — pgTAP **106** (+8: new `010_handle_format_test.sql`), Jest **51** (+7:
+  `profile.test.ts` pure validators, AuthSheet returning/first-time/invalid/taken paths). `tsc`
+  clean. Not yet committed; not applied to the hosted project.
+
+**Next:** the **post-creation flow (T13-post)** is now fully unblocked — image-picker/camera →
+the tested `create_post` RPC, with the mint-template RPC decision still open (see below). This
+was flagged in the plan as the pairing for the handle claim; recommend running `/spec` on it
+before building given the schema decision.
+
 ## ▶ Current state (2026-08-21) and the next move
 
 **The core loop is built and shipped:** browse feed (T12) → quest detail (T13) → email-OTP
