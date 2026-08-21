@@ -371,6 +371,7 @@ cannot fix.
 
 | Date | Decision | Rationale |
 |---|---|---|
+| 2026-08-20 | Added `effort`/`nerve` (1..3 tiers) + `cost_pence` to `quest_templates` for the stamp block | The stamp block "replaces every badge, chip, XP counter" and is the core of quest detail — it can't ship rarity-only without three empty cells. Migration `009`, populated from the curated seed; nullable so a redo-minted template shows `—`. Reversible in one migration if the scale changes |
 | 2026-08-18 | Loading is a static layout placeholder, never a shimmer | "No skeleton shimmer" and "the masonry must never move after paint" are the same rule — reserving geometry is the only way to avoid reflow, and animating it is the only part that was ever banned |
 | 2026-08-18 | `developing…` belongs to loading; empty gets its own copy | Both states shared the word (`app/index.tsx` used it for empty), leaving a cold visitor unable to tell "fetching" from "genuinely bare" — the two states needing opposite reactions |
 | 2026-08-18 | One `← BACK`, every non-root screen, both platforms | Headers are off globally, so native had no visible way back at all; deep-linked TikTok arrivals have no history, so it falls back to the front door |

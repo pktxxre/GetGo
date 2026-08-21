@@ -7,6 +7,105 @@ does not restate them.
 
 ---
 
+## Update — 2026-08-20: T12 feed is wired end-to-end (uncommitted)
+
+The app now reads real posts from the backend and renders the masonry. Changed/added this
+session (not yet committed):
+
+- **`.env` → local stack** (`http://127.0.0.1:54321` + local publishable key). Hosted values
+  kept commented for when the hosted schema is live.
+- **`supabase/migrations/008_photo_dimensions.sql`** — nullable `width`/`height` on
+  `post_photos` so the masonry reserves geometry and never reflows. `create_post` is
+  **unchanged** (its signature is the locked D14 contract); RPC-made photos get NULL dims and
+  the client falls back to a default aspect until a later task threads dims through the RPC.
+- **`supabase/seed.sql`** — 3 demo authors, 10 curated London quests, 10 public posts (+1
+  private, to prove the anon feed hides it), photos as picsum URLs with real dimensions. Runs
+  on `supabase db reset`.
+- **Client data layer** — `lib/photos.ts` (URL resolver: http→passthrough, else bucket
+  `getPublicUrl`), `lib/feed.ts` (`fetchFeed` + the pure `toFeedItem` mapper), `hooks/useFeed.ts`.
+- **Feed UI** — `components/feed/QuestTile.tsx` + `components/feed/Masonry.tsx` (pre-computed
+  greedy columns). `app/index.tsx` rewritten to render loading (`TilePlaceholder` grid +
+  `developing…`), empty (`nothing here yet`), error (`StateScreen kind="failed"` + retry),
+  and the real masonry. **S6 done** — loading and empty no longer share copy.
+- **Tests** — pgTAP **91 green** (+6; test 002 de-fragilised to not assert an absolute
+  catalog count). Jest **29 green** (+12: mapper, layout, `formatOrdinal`, all four feed
+  states). `tsc` clean. `npx expo export --platform web` builds (828 modules).
+
+**Fact-line decision made:** DESIGN's `ORDINAL · POSTCODE · COST` has no postcode/cost in
+the locked schema, so the tile shows `ORDINAL · NEIGHBOURHOOD` (ordinal red). Ordinal reads
+`4TH EVER` for all posts (consistent, no invented rarity threshold). Revisit if the
+effort/nerve/cost axes decision below lands and adds columns.
+
+## Update — 2026-08-20 (cont.): auth + real `save it` — the core loop closes
+
+A signed-out visitor can now tap `save it`, get a 6-digit email code, and land the save
+stamp — proven end-to-end against the real backend. Added (uncommitted):
+
+- **`lib/auth.tsx`** — `SessionProvider` + `useSession()`. **Email OTP** (6-digit code) was
+  the auth decision: lowest-friction for the cold TikTok→save funnel, identical web/native,
+  no social SDK, no deep-link dance. Session is **in-memory** (the client injects the bearer
+  token, so authed PostgREST calls work for the session's life); cross-restart persistence
+  needs `@react-native-async-storage/async-storage` — deliberate follow-up, no native module
+  added mid-flight. Wired into `app/_layout.tsx`.
+- **`components/auth/AuthSheet.tsx`** — the one auth surface: email → code → in, inline
+  errors (never a toast). Opens when a stranger taps save.
+- **`lib/saves.ts`** (`saveQuest`/`isSaved`, idempotent upsert), **`components/quest/SaveStamp.tsx`**
+  (the vermilion `SAVED · 12 AUG`, seeded −6..+6° tilt, 1.06→1.00 scale, 140ms, reduced-motion
+  aware), **`hooks/useReducedMotion.ts`** (S9). `lib/format.ts` gained `seededAngle`/`formatStampDate`.
+- **`app/quest/[id].tsx`** save flow: signed-in → save + stamp; signed-out → AuthSheet → save.
+  Reflects an existing save on open. `fetchQuest` now returns `templateId` (the save target).
+- **Local email config** — `supabase/config.toml` + `supabase/templates/{magic_link,confirmation}.html`
+  make the OTP email show `{{ .Token }}` (the default is a bare magic link, which the typed-code
+  UI can't use). **Requires `supabase stop && supabase start`** (config, not a migration).
+  The hosted project will need the same template set in its dashboard.
+- **Tests** — pgTAP **98** (unchanged), Jest **44** (+5: auth-sheet flow, save wiring,
+  seeded-angle/stamp-date). `tsc` clean, web build OK. **An e2e script** (throwaway) verified
+  the live loop: signInWithOtp → code from Mailpit → verifyOtp(type email) → save under RLS →
+  isSaved=1 → idempotent re-save → anon can't read the save. All ✓.
+
+**Next:** post-creation flow (**T13-post** — camera/image-picker + the tested `create_post`
+RPC; now unblocked by auth) is the natural follow-on, and `delete_account` (T9) + an
+onboarding **handle** claim (users.handle is NULL until claimed; the byline shows `@handle`).
+Still open/unblocked: detail location-map strip, image grade, S7/S8/S10/S11 shell, the
+fact-line truncation polish, and **cross-restart session persistence** (async-storage).
+
+## Update — 2026-08-20 (cont.): T13 quest detail is built (read-only)
+
+Tapping a feed tile now opens a real quest-detail screen. Added:
+
+- **`supabase/migrations/009_quest_axes.sql`** — `effort`/`nerve` (1..3 tiers) + `cost_pence`
+  on `quest_templates`. **This resolves the thrice-flagged open decision** (option A from
+  above): the DESIGN stamp block is 2×2 EFFORT/NERVE/COST/RARITY and can't ship without the
+  axes. Nullable (redo-minted templates have none → stamp shows `—`). Reversible in one
+  migration if the representation should change; recorded in the migration + DESIGN log.
+- **Seed** now sets the axes on all 10 curated quests and adds 9 ratings (only non-authors
+  rate), so the reception sentence renders real numbers.
+- **`lib/format.ts`** — `ordinalize`/`formatOrdinal`/`tierLabel`/`costLabel`/
+  `receptionSentence` (pure). `lib/quest.ts` (`fetchQuest` + `toQuestDetail`), `hooks/useQuest.ts`.
+- **`components/quest/StampBlock.tsx`** + **`app/quest/[id].tsx`** — hero 4:5, `← BACK` on
+  bone, title, stamp block (RARITY red = ordinal), caption, byline, reception sentence,
+  sticky `save it` bar. `notFound`/`error`/`loading` states via the shell. `QuestTile` now
+  navigates (`router.push('/quest/:id')`).
+- **Tests** — pgTAP **98 green** (+7), Jest **39 green** (+10: detail mapper, stamp
+  formatting, reception, detail screen states). `tsc` clean. Web build registers `/quest/[id]`.
+
+**`save it` is deliberately a stub** — it shows "save needs an account — coming soon" instead
+of faking the save stamp. Persisting a save needs auth **and** the mint-template RPC that
+`005_social.sql` says lives "with T12's save flow" (never built). Deferred on purpose: the
+save stamp is the whole delight budget and must not be spent on a lie.
+
+**Next:** **auth** is now the true unblocker — it gates the real save, the post-creation flow
+(T13-post), and delete_account. `lib/supabase.ts` still has `persistSession:false` and the
+magic-link-vs-social decision is open (HANDOFF.md). Also unbuilt: the location map strip on
+detail (needs map tiles), the image grade (warmth/sat/grain) on all photos, S7–S11 shell
+(OfflineBanner/InlineError/reduced-motion — all unblocked and can go anytime), and the
+fact-line truncation polish noted below.
+
+Cosmetic nit observed on-device: the feed fact line (`4TH EVER · TWICKENH…`) truncates the
+neighbourhood in a narrow column — drop the `EVER` suffix on the tile or let the name shrink.
+
+---
+
 ## Where things stand (all committed, all verified)
 
 **Backend — 7 migrations, 85 pgTAP tests green** (`supabase/migrations/001…007`):
