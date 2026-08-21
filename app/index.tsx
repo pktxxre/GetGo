@@ -1,18 +1,39 @@
 import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, Pressable, useWindowDimensions } from 'react-native';
 import { color, layout, space, type } from '../theme/tokens';
+import { useFeed } from '../hooks/useFeed';
+import { useDelayedLoading } from '../hooks/useDelayedLoading';
+import { Masonry, columnCountForWidth } from '../components/feed/Masonry';
+import { TilePlaceholder } from '../components/shell/Placeholder';
+import { StateScreen } from '../components/shell/StateScreen';
+import { SHELL_COPY } from '../components/shell/copy';
 
 // The front door's text tabs (DESIGN.md → Layout → Quest list). Reads like a book index,
-// not a toolbar. NOTE: `rarest` is flagged "confirm before building" in DESIGN.md → Open;
-// it's shown here as a label only, no query is wired to any of these yet.
+// not a toolbar. Only "what's new" (newest-first) is wired; the others are labels for now —
+// popular/rarest need phase-2 median-relative reception XP, and `rarest` is still flagged
+// "confirm before building" in DESIGN.md → Open.
 const TABS = ['what’s new', 'popular', 'rarest', 'nearby'] as const;
 type Tab = (typeof TABS)[number];
 
+// Placeholder tiles vary in height so the loading grid reads like the masonry it precedes,
+// not a row of identical boxes. Static — a placeholder that moves is a shimmer (banned).
+const LOADING_ASPECTS = [0.72, 0.9, 0.8, 0.66, 0.84, 0.76];
+
 export default function QuestList() {
   const [active, setActive] = useState<Tab>(TABS[0]);
+  const { width } = useWindowDimensions();
+  const columns = columnCountForWidth(width);
 
-  // No backend data yet — the feed comes online with the posts table + create_post RPC.
-  const posts: unknown[] = [];
+  const { items, status, reload } = useFeed();
+  const showLoading = useDelayedLoading(status === 'loading');
+
+  // A failed load takes the whole surface — retry is the one move that can work here
+  // (SHELL_SPEC state matrix: Quest list · Error → StateScreen kind="failed").
+  if (status === 'error') {
+    return <StateScreen kind="failed" onPrimary={reload} />;
+  }
+
+  const countLabel = status === 'ready' ? `LONDON · ${items.length} SIDEQUESTS` : 'LONDON';
 
   return (
     <ScrollView
@@ -23,7 +44,7 @@ export default function QuestList() {
       {/* One line of chrome. Scrolls away and does not come back. */}
       <View style={styles.chrome}>
         <Text style={styles.wordmark}>getgo</Text>
-        <Text style={styles.cityLine}>LONDON &middot; {posts.length} SIDEQUESTS</Text>
+        <Text style={styles.cityLine}>{countLabel}</Text>
       </View>
 
       {/* Text tabs, not pills. Active gets a 2px green underline. */}
@@ -41,13 +62,32 @@ export default function QuestList() {
         })}
       </View>
 
-      {/* Empty state. No spinners, no skeleton shimmer — a quiet mono line (DESIGN.md → Motion). */}
-      {posts.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyLine}>DEVELOPING&hellip;</Text>
-          <Text style={styles.emptyHint}>
-            the archive is empty. first sidequests land once the feed is wired up.
-          </Text>
+      {status === 'ready' && items.length > 0 ? (
+        <Masonry items={items} columns={columns} />
+      ) : null}
+
+      {/* Empty — its own copy, never `developing…` (S6). Loading and empty need opposite
+          reactions, so they must never say the same thing (DESIGN.md → Shell States). */}
+      {status === 'ready' && items.length === 0 ? (
+        <View style={styles.empty} accessibilityLiveRegion="polite">
+          <Text style={styles.emptyLine}>{SHELL_COPY.emptyFeed.toUpperCase()}</Text>
+          <Text style={styles.emptyHint}>{SHELL_COPY.emptyFeedBody}</Text>
+        </View>
+      ) : null}
+
+      {/* Loading — a reserved-geometry placeholder grid + one muted mono line. No shimmer. */}
+      {showLoading ? (
+        <View accessibilityLiveRegion="polite">
+          <View style={styles.loadingRow}>
+            {Array.from({ length: columns }).map((_, c) => (
+              <View key={c} style={styles.loadingColumn}>
+                {LOADING_ASPECTS.filter((_, i) => i % columns === c).map((aspect, i) => (
+                  <TilePlaceholder key={i} aspectRatio={aspect} />
+                ))}
+              </View>
+            ))}
+          </View>
+          <Text style={styles.loadingLine}>{SHELL_COPY.loading}</Text>
         </View>
       ) : null}
     </ScrollView>
@@ -102,6 +142,19 @@ const styles = StyleSheet.create({
   },
   tabUnderlineActive: {
     backgroundColor: color.brand, // 2px green underline
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    gap: layout.gutter,
+  },
+  loadingColumn: {
+    flex: 1,
+    gap: space.xl,
+  },
+  loadingLine: {
+    ...type.microLabel,
+    color: color.inkMuted,
+    marginTop: space.xl,
   },
   empty: {
     paddingTop: space.huge,
