@@ -59,11 +59,16 @@ select throws_ok(
 );
 
 -- ── RLS: the catalog is publicly readable ───────────────────────────────────────
+-- Scoped to this test's own slugs, not an absolute catalog count: seed.sql (and the
+-- growing curated catalog) legitimately add rows, and the policy under test is "anon may
+-- read curated templates", which a count of the fixture's three rows proves exactly — a
+-- blocked read would return 0, not 3.
 set local role anon;
 select is(
-  (select count(*)::int from public.quest_templates),
+  (select count(*)::int from public.quest_templates
+     where slug in ('near-bigben', 'camden', 'greenwich')),
   3,
-  'anon can read the whole catalog'
+  'anon can read curated templates'
 );
 reset role;
 

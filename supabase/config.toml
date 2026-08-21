@@ -248,6 +248,17 @@ otp_expiry = 3600
 # subject = "You have been invited"
 # content_path = "./supabase/templates/invite.html"
 
+# Email OTP as a typed 6-digit code (not a bare magic link). The app's AuthSheet asks the
+# user to type {{ .Token }}, so the email must show it. magic_link covers existing-user OTP;
+# confirmation covers a brand-new signup's first code.
+[auth.email.template.magic_link]
+subject = "your getgo code"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.confirmation]
+subject = "your getgo code"
+content_path = "./supabase/templates/confirmation.html"
+
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]
 # enabled = true
