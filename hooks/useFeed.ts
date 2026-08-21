@@ -7,6 +7,9 @@ export type FeedStatus = 'loading' | 'ready' | 'error';
  * Loads the front-door feed. Deliberately tiny — no cache, no pagination yet; the front
  * door fetches once and offers a manual retry on failure (the only place retry helps —
  * SHELL_SPEC → invariant 2). `reload` re-runs the query for the `failed` state's retry.
+ *
+ * `refresh` is the quiet variant: it re-fetches without flipping back to `loading`, so
+ * returning to the feed after posting shows the new post with no placeholder flash.
  */
 export function useFeed() {
   const [items, setItems] = useState<FeedItem[]>([]);
@@ -20,6 +23,16 @@ export function useFeed() {
       setStatus('ready');
     } catch {
       setStatus('error');
+    }
+  }, []);
+
+  const refresh = useCallback(async () => {
+    try {
+      const data = await fetchFeed();
+      setItems(data);
+      setStatus('ready');
+    } catch {
+      // keep whatever's on screen — a background refresh must not blank the feed.
     }
   }, []);
 
@@ -42,5 +55,5 @@ export function useFeed() {
     };
   }, []);
 
-  return { items, status, reload: load };
+  return { items, status, reload: load, refresh };
 }

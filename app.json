@@ -38,6 +38,12 @@
         }
       ],
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "GetGo needs your photos so you can post a sidequest you already did."
+        }
+      ],
+      [
         "expo-location",
         {
           "locationWhenInUsePermission": "GetGo uses your location to show sidequests near you and tag where you did yours."

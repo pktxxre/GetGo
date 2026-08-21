@@ -1,6 +1,6 @@
 {
   "name": "getgo",
-  "version": "0.2.0.0",
+  "version": "0.3.0.0",
   "main": "expo-router/entry",
   "dependencies": {
     "@expo/metro-runtime": "~57.0.9",
@@ -9,6 +9,7 @@
     "expo-camera": "~57.0.3",
     "expo-image": "~57.0.2",
     "expo-image-manipulator": "~57.0.9",
+    "expo-image-picker": "~57.0.12",
     "expo-location": "~57.0.9",
     "expo-router": "~57.0.12",
     "expo-status-bar": "~57.0.1",

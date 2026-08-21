@@ -35,6 +35,7 @@ export type QuestDetail = {
 type QuestRow = {
   id: string;
   template_id: string | null;
+  title: string | null;
   caption: string | null;
   completion_ordinal: number | null;
   author: { handle: string | null } | null;
@@ -46,7 +47,7 @@ type QuestRow = {
 };
 
 const QUEST_SELECT =
-  'id,template_id,caption,completion_ordinal,' +
+  'id,template_id,title,caption,completion_ordinal,' +
   'author:users(handle),' +
   'template:quest_templates(title,neighbourhood,effort,nerve,cost_pence),' +
   'photos:post_photos(storage_path,idx,width,height),' +
@@ -67,7 +68,9 @@ export function toQuestDetail(row: QuestRow): QuestDetail {
   return {
     id: row.id,
     templateId: row.template_id,
-    title: row.template?.title ?? null,
+    // Prefer the template's canonical name; fall back to the post's own name for a
+    // first-of-its-kind post that hasn't been minted into a template yet (015).
+    title: row.template?.title ?? row.title ?? null,
     caption: row.caption,
     ordinal: row.completion_ordinal,
     handle: row.author?.handle ?? null,
