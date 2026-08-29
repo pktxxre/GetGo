@@ -6,7 +6,7 @@
 -- are both SECURITY DEFINER, so the acting identity comes from the claim, not the role.
 
 begin;
-select plan(15);
+select plan(18);
 
 \set author 'a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1'
 \set saver  '55555555-5555-5555-5555-555555555555'
@@ -23,6 +23,10 @@ insert into public.posts (id, user_id, title, caption, visibility) values
   ('e2000000-0000-0000-0000-000000000000', 'a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1', null, 'wandered borough market til 2am', 'public'),
   ('e3000000-0000-0000-0000-000000000000', 'a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1', null, null, 'public'),
   ('e4000000-0000-0000-0000-000000000000', 'a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1', 'secret quest', null, 'private');
+-- A classified + located post, so we can prove the mint copies its axes (018) and
+-- neighbourhood (021) onto the template.
+insert into public.posts (id, user_id, title, caption, visibility, effort, nerve, cost_pence, neighbourhood) values
+  ('e5000000-0000-0000-0000-000000000000', 'a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1', 'rooftop cinema', 'watched a film in the sky', 'public', 2, 3, 1200, 'Peckham');
 
 -- ── shape + security ────────────────────────────────────────────────────────────
 select has_function('public', 'mint_template_from_post', array['uuid'], 'mint_template_from_post(uuid) exists');
@@ -74,6 +78,17 @@ set local request.jwt.claims to '{"sub":"99999999-9999-9999-9999-999999999999"}'
 select throws_ok(
   $$ select public.mint_template_from_post('e4000000-0000-0000-0000-000000000000') $$,
   '42501', null, 'minting a private post you cannot see is denied');
+
+-- ── axes: the minted template inherits the origin post's classification (018) ────
+set local request.jwt.claims to '{"sub":"55555555-5555-5555-5555-555555555555"}';
+create temporary table m5 as
+  select public.mint_template_from_post('e5000000-0000-0000-0000-000000000000') as tid;
+select is((select effort from public.quest_templates where id = (select tid from m5)),
+          2::smallint, 'minted template inherits the post effort tier');
+select is((select cost_pence from public.quest_templates where id = (select tid from m5)),
+          1200, 'minted template inherits the post cost');
+select is((select neighbourhood from public.quest_templates where id = (select tid from m5)),
+          'Peckham', 'minted template inherits the post neighbourhood (021)');
 
 -- ── rarity: a freshly minted, never-redone quest has exactly one post ────────────
 select is(
