@@ -3,6 +3,41 @@
 All notable changes to GetGo are recorded here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions are `MAJOR.MINOR.PATCH.MICRO`.
 
+## [0.4.0.0] - 2026-08-30
+
+Fills in the parts a posted quest was missing and adds the first ways to browse by person and by
+place. A post can now carry its effort/nerve/cost and where it happened, those flow onto the
+minted template, the feed sorts by distance, you can see any user's quests, and — visible on
+every screen — the real typefaces finally load. Still pre-launch (London-only), local Supabase.
+
+### Added
+- **Classify a quest at post time** — compose captures effort/nerve (low/mid/high) and cost;
+  stored on the post and copied onto the template when it's first saved, so the stamp block shows
+  real axes instead of "—".
+- **Post-time location** — opt-in device location is reverse-geocoded to a neighbourhood, stored
+  on the post and copied to the template, so the `ORDINAL · NEIGHBOURHOOD` fact line fills in.
+- **Nearby feed tab** — the `nearby` tab sorts the feed by distance from you via a `feed_nearby`
+  RPC (PostGIS `<->`, SECURITY INVOKER so RLS still hides private posts by distance).
+- **A user's quests** — tap any byline to see that person's completed quests; RLS shows your own
+  private posts on your page and only public ones on a stranger's.
+- **Session persists across restarts** — the Supabase client now stores the session in
+  AsyncStorage (SSR-guarded for web export), so signing in survives a reload.
+
+### Changed
+- **Typography now renders as designed** — Fraunces / Schibsted Grotesk / Martian Mono load via
+  `expo-font` with the splash held until ready; before this the whole app fell back to system SF
+  and lost the mono fact-line identity.
+- **Feed fact line** drops the `EVER` suffix on the tile so the neighbourhood stops truncating
+  (`4TH · TWICKENHAM`); detail still spells it out.
+- Sticky action bars and the pinned pill no longer crowd/occlude the last row of content.
+
+### Tested
+- 160 pgTAP (+23: post axes, create_post axes/neighbourhood, mint copies axes+neighbourhood,
+  `feed_nearby` ordering + RLS) and 81 Jest (+21: cost/neighbourhood parsers, compose axes +
+  location wiring, mapper fallbacks, profile + nearby screens, session-persistence contract).
+  `tsc` clean, web export builds all 6 routes, verified on the iOS Simulator against the local
+  stack (fonts, stamp block, feed, quest detail, profile).
+
 ## [0.3.0.0] - 2026-08-21
 
 Closes the loop both ways: you can now **post** your own sidequests, not just browse and save
