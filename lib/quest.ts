@@ -22,6 +22,8 @@ export type QuestDetail = {
   /** completion_ordinal — the stamped "you're the Nth ever". */
   ordinal: number | null;
   handle: string | null;
+  /** the author's user id — links the byline to their quests. */
+  authorId: string | null;
   neighbourhood: string | null;
   /** 1..3 tiers; null when the template is redo-minted and has no axes yet. */
   effort: number | null;
@@ -35,9 +37,12 @@ export type QuestDetail = {
 type QuestRow = {
   id: string;
   template_id: string | null;
+  user_id: string;
   title: string | null;
   caption: string | null;
   completion_ordinal: number | null;
+  /** the post's own captured neighbourhood — the fallback before a template is minted (019). */
+  neighbourhood: string | null;
   author: { handle: string | null } | null;
   template:
     | { title: string | null; neighbourhood: string | null; effort: number | null; nerve: number | null; cost_pence: number | null }
@@ -47,7 +52,7 @@ type QuestRow = {
 };
 
 const QUEST_SELECT =
-  'id,template_id,title,caption,completion_ordinal,' +
+  'id,template_id,user_id,title,caption,completion_ordinal,neighbourhood,' +
   'author:users(handle),' +
   'template:quest_templates(title,neighbourhood,effort,nerve,cost_pence),' +
   'photos:post_photos(storage_path,idx,width,height),' +
@@ -74,7 +79,9 @@ export function toQuestDetail(row: QuestRow): QuestDetail {
     caption: row.caption,
     ordinal: row.completion_ordinal,
     handle: row.author?.handle ?? null,
-    neighbourhood: row.template?.neighbourhood ?? null,
+    authorId: row.user_id ?? null,
+    // Template name is canonical; fall back to the post's own for a not-yet-minted post (019).
+    neighbourhood: row.template?.neighbourhood ?? row.neighbourhood ?? null,
     effort: row.template?.effort ?? null,
     nerve: row.template?.nerve ?? null,
     costPence: row.template?.cost_pence ?? null,

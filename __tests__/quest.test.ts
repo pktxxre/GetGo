@@ -3,8 +3,10 @@ import { ordinalize, tierLabel, costLabel, receptionSentence, seededAngle, forma
 
 const row = (over: any = {}) => ({
   id: 'p1',
+  user_id: 'u-theo',
   caption: 'the herons do not care about you',
   completion_ordinal: 212,
+  neighbourhood: null,
   author: { handle: 'theo' },
   template: { title: 'find the herons', neighbourhood: 'Holland Park', effort: 1, nerve: 2, cost_pence: 0 },
   photos: [
@@ -23,6 +25,7 @@ describe('toQuestDetail', () => {
       title: 'find the herons',
       ordinal: 212,
       handle: 'theo',
+      authorId: 'u-theo',
       neighbourhood: 'Holland Park',
       effort: 1,
       nerve: 2,
@@ -36,6 +39,11 @@ describe('toQuestDetail', () => {
   it('survives a template-less, rating-less post', () => {
     const q = toQuestDetail(row({ template: null, ratings: [], completion_ordinal: null }) as any);
     expect(q).toMatchObject({ title: null, effort: null, ordinal: null, awesome: 0, couldBeCooler: 0 });
+  });
+
+  it('falls back to the post neighbourhood before a template is minted (019)', () => {
+    const q = toQuestDetail(row({ template: null, neighbourhood: 'Peckham', ratings: [] }) as any);
+    expect(q.neighbourhood).toBe('Peckham');
   });
 });
 

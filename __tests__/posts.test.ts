@@ -1,4 +1,4 @@
-import { extFromUri, photoObjectKey, uuidv4 } from '../lib/posts';
+import { extFromUri, photoObjectKey, poundsToPence, uuidv4 } from '../lib/posts';
 
 describe('extFromUri', () => {
   it('reads a lowercased extension from a file uri', () => {
@@ -19,6 +19,26 @@ describe('photoObjectKey', () => {
     expect(key).toBe('61616161-6161-6161-6161-616161616161/p1/0.jpg');
     // the first path segment is what (storage.foldername(name))[1] compares to auth.uid()
     expect(key.split('/')[0]).toBe('61616161-6161-6161-6161-616161616161');
+  });
+});
+
+describe('poundsToPence', () => {
+  it('parses pounds into integer pence', () => {
+    expect(poundsToPence('4')).toBe(400);
+    expect(poundsToPence('4.20')).toBe(420);
+    expect(poundsToPence('4.2')).toBe(420); // "4.2" and "4.20" both land on 420
+    expect(poundsToPence('£3.50')).toBe(350); // a stray £ prefix is tolerated
+  });
+
+  it('treats free as 0 and empty as unset (null)', () => {
+    expect(poundsToPence('0')).toBe(0);
+    expect(poundsToPence('')).toBeNull();
+    expect(poundsToPence('   ')).toBeNull();
+  });
+
+  it('rejects a non-number or negative as unset (null)', () => {
+    expect(poundsToPence('free')).toBeNull();
+    expect(poundsToPence('-2')).toBeNull();
   });
 });
 

@@ -41,7 +41,38 @@ export type CreatePostInput = {
    * post (no template until someone saves it, 015).
    */
   templateId?: string | null;
+  /**
+   * The author's classification of the quest (016) — effort/nerve as 1..3 tiers, cost in pence
+   * (0 = free). Stored on the post and copied onto the template when it's first saved (018), so
+   * the stamp block shows real axes instead of "—". Only meaningful on a fresh post; a redo
+   * inherits the template's axes, so compose leaves these null in redo mode.
+   */
+  effort?: number | null;
+  nerve?: number | null;
+  costPence?: number | null;
+  /**
+   * Where the quest happened (019/020) — captured from device location at compose time. lon/lat
+   * become the post's geog (drives phase-2 nearby); neighbourhood is the fact-line name. Copied
+   * onto the template when it's first saved (021). Only sent on a fresh post; a redo inherits the
+   * template's location.
+   */
+  lon?: number | null;
+  lat?: number | null;
+  neighbourhood?: string | null;
 };
+
+/**
+ * Parse a pounds string from the compose cost field into integer pence (the DB's unit), or
+ * null when the field is empty/unusable. Empty → null (unset, renders "—"); "0" → 0 (free).
+ * Rounds to the nearest penny so "4.2" and "4.20" both land on 420. Pure, so Jest proves it.
+ */
+export function poundsToPence(input: string): number | null {
+  const trimmed = input.trim().replace(/^£/, '').trim();
+  if (trimmed === '') return null;
+  const pounds = Number(trimmed);
+  if (!Number.isFinite(pounds) || pounds < 0) return null;
+  return Math.round(pounds * 100);
+}
 
 /** create_post's jsonb result — the XP state the client animates from (D14). */
 export type CreatePostResult = {
@@ -124,6 +155,14 @@ export async function createPost(input: CreatePostInput): Promise<CreatePostResu
     p_photo_widths: input.photos.map((p) => p.width ?? null),
     p_photo_heights: input.photos.map((p) => p.height ?? null),
     p_title: input.title?.trim() ? input.title.trim() : null,
+    // Axes ride the additive tail (017); null when the author skipped classifying.
+    p_effort: input.effort ?? null,
+    p_nerve: input.nerve ?? null,
+    p_cost_pence: input.costPence ?? null,
+    // Location (020); null when the author didn't add it or denied permission.
+    p_lon: input.lon ?? null,
+    p_lat: input.lat ?? null,
+    p_neighbourhood: input.neighbourhood?.trim() ? input.neighbourhood.trim() : null,
   });
   if (error) throw error;
   return data as CreatePostResult;

@@ -36,6 +36,7 @@ const quest = (over: Partial<QuestDetail> = {}): QuestDetail => ({
   caption: 'the herons do not care about you',
   ordinal: 212,
   handle: 'theo',
+  authorId: 'u-theo',
   neighbourhood: 'Holland Park',
   effort: 1,
   nerve: 2,
@@ -115,6 +116,16 @@ describe('QuestDetail screen', () => {
     mockQuestState = { quest: quest({ templateId: null }), status: 'ready', reload };
     render(<QuestDetailScreen />);
     expect(screen.queryByText('i did this too')).toBeNull();
+  });
+
+  it('the byline links to the author’s quests', () => {
+    mockQuestState = { quest: quest(), status: 'ready', reload };
+    render(<QuestDetailScreen />);
+    fireEvent.press(screen.getByLabelText("see @theo's quests"));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/user/[id]',
+      params: { id: 'u-theo', handle: 'theo' },
+    });
   });
 
   it('a missing/invisible post is notFound, not an error', () => {

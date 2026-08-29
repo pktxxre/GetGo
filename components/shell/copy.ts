@@ -45,5 +45,13 @@ export const SHELL_COPY = {
   loading: 'developing…',
   emptyFeed: 'nothing here yet',
   emptyFeedBody: 'no sidequests in this corner of london. yet.',
+  emptyUser: 'no quests yet',
+  emptyUserBody: 'nothing posted here — yet.',
+  emptyNearby: 'nothing nearby',
+  emptyNearbyBody: 'no sidequests logged around here. be the first.',
+  nearbyDenied: 'nearby needs your location',
+  nearbyDeniedBody: 'turn on location to see sidequests around you.',
+  nearbyError: 'couldn’t load nearby',
+  retry: 'try again',
   offline: 'no connection',
 } as const;
