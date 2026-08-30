@@ -5,7 +5,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { color, layout, space, type } from '../theme/tokens';
 import { useSession } from '../lib/auth';
 import { supabase } from '../lib/supabase';
-import { createPost, type NewPostVisibility, type PhotoInput } from '../lib/posts';
+import { createPost, poundsToPence, type NewPostVisibility, type PhotoInput } from '../lib/posts';
+import { captureLocation, type CapturedLocation } from '../lib/location';
 import { BackLink } from '../components/shell/BackLink';
 import { AuthSheet } from '../components/auth/AuthSheet';
 
@@ -34,6 +35,15 @@ export default function Compose() {
   const [photo, setPhoto] = useState<PhotoInput | null>(null);
   const [title, setTitle] = useState('');
   const [caption, setCaption] = useState('');
+  // The author's classification (016). Effort/nerve are 1..3 tiers, null = unclassified (the
+  // stamp shows "—"). Cost is a raw pounds string until post time, then → pence. Fresh posts
+  // only: a redo inherits the template's axes, so these are never sent in redo mode.
+  const [effort, setEffort] = useState<number | null>(null);
+  const [nerve, setNerve] = useState<number | null>(null);
+  const [cost, setCost] = useState('');
+  // Where it happened (019) — captured opt-in from device location. Fresh posts only.
+  const [location, setLocation] = useState<CapturedLocation | null>(null);
+  const [locating, setLocating] = useState(false);
   const [visibility, setVisibility] = useState<NewPostVisibility>('public');
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +72,19 @@ export default function Compose() {
     }
   };
 
+  const addLocation = async () => {
+    if (locating) return;
+    setError(null);
+    setLocating(true);
+    try {
+      const loc = await captureLocation();
+      if (loc) setLocation(loc);
+      else setError('location is off — turn it on in settings, or post without it.');
+    } finally {
+      setLocating(false);
+    }
+  };
+
   const post = async () => {
     if (!photo) return;
     setError(null);
@@ -69,11 +92,19 @@ export default function Compose() {
     try {
       const result = await createPost({
         photos: [photo],
-        // Redo → the template already names the quest; a fresh post carries the typed name.
+        // Redo → the template already names and classifies the quest; a fresh post carries the
+        // typed name and the author's effort/nerve/cost.
         title: isRedo ? null : title,
         caption,
         visibility,
         templateId: redoTemplateId,
+        effort: isRedo ? null : effort,
+        nerve: isRedo ? null : nerve,
+        costPence: isRedo ? null : poundsToPence(cost),
+        // A redo inherits the quest's location from its template; a fresh post carries its own.
+        lon: isRedo ? null : location?.lon ?? null,
+        lat: isRedo ? null : location?.lat ?? null,
+        neighbourhood: isRedo ? null : location?.neighbourhood ?? null,
       });
       router.replace(`/quest/${result.post.id}`);
     } catch {
@@ -150,6 +181,51 @@ export default function Compose() {
             accessibilityLabel="caption"
           />
 
+          {/* Classify the quest on its axes (016) — effort/nerve/cost, not one good/bad line.
+              What the author picks here is copied onto the template when someone first saves
+              this post (018), so it's what fills the stamp block for everyone who follows.
+              Fresh post only; a redo inherits the existing quest's axes. Optional — an unset
+              axis reads "—" rather than a guess. */}
+          {isRedo ? null : (
+            <View style={styles.classify}>
+              <TierRow label="effort" value={effort} onPick={setEffort} />
+              <TierRow label="nerve" value={nerve} onPick={setNerve} />
+              <View style={styles.classifyRow}>
+                <Text style={styles.classifyLabel}>COST</Text>
+                <View style={styles.costField}>
+                  <Text style={styles.costPrefix}>£</Text>
+                  <TextInput
+                    style={styles.costInput}
+                    value={cost}
+                    onChangeText={setCost}
+                    placeholder="0"
+                    placeholderTextColor={color.inkMuted}
+                    keyboardType="decimal-pad"
+                    maxLength={7}
+                    accessibilityLabel="cost in pounds"
+                  />
+                </View>
+              </View>
+
+              {/* Where it happened (019). Opt-in: tap to attach device location → fills the
+                  fact line's neighbourhood. Tapping the captured value again clears it. */}
+              <View style={styles.classifyRow}>
+                <Text style={styles.classifyLabel}>WHERE</Text>
+                {location ? (
+                  <Pressable onPress={() => setLocation(null)} hitSlop={8} accessibilityRole="button" accessibilityLabel="clear location">
+                    <Text style={styles.tierOptionActive}>
+                      {(location.neighbourhood ?? 'located').toUpperCase()}
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <Pressable onPress={addLocation} hitSlop={8} disabled={locating} accessibilityRole="button" accessibilityLabel="add location">
+                    <Text style={styles.tierOption}>{locating ? 'LOCATING…' : 'ADD LOCATION'}</Text>
+                  </Pressable>
+                )}
+              </View>
+            </View>
+          )}
+
           {/* Privacy is per-post (CLAUDE.md). A mono two-state pick, not an account setting. */}
           <View style={styles.visRow}>
             {(['public', 'private'] as const).map((v) => (
@@ -179,10 +255,48 @@ export default function Compose() {
   );
 }
 
+/** One classification axis: a mono label + a low/mid/high tap-pick (1..3). Tapping the active
+ *  tier again clears it back to unset, so the author can undo a mis-tap to "—". */
+function TierRow({
+  label,
+  value,
+  onPick,
+}: {
+  label: string;
+  value: number | null;
+  onPick: (tier: number | null) => void;
+}) {
+  const tiers: [string, number][] = [
+    ['low', 1],
+    ['mid', 2],
+    ['high', 3],
+  ];
+  return (
+    <View style={styles.classifyRow}>
+      <Text style={styles.classifyLabel}>{label.toUpperCase()}</Text>
+      <View style={styles.tierOptions}>
+        {tiers.map(([word, tier]) => (
+          <Pressable
+            key={tier}
+            onPress={() => onPick(value === tier ? null : tier)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`${label} ${word}`}
+          >
+            <Text style={[styles.tierOption, value === tier && styles.tierOptionActive]}>
+              {word.toUpperCase()}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: color.ground },
   page: { flex: 1, backgroundColor: color.ground },
-  scrollContent: { paddingBottom: 96 },
+  scrollContent: { paddingBottom: 120 }, // clear the sticky "post it" bar with room to spare
   body: {
     paddingHorizontal: layout.pageMargin,
     paddingTop: space.huge,
@@ -244,6 +358,19 @@ const styles = StyleSheet.create({
     borderBottomColor: color.rule,
     paddingVertical: space.sm,
   },
+  classify: { gap: space.md },
+  classifyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  classifyLabel: { ...type.microLabel, color: color.inkMuted },
+  tierOptions: { flexDirection: 'row', gap: space.lg },
+  tierOption: { ...type.dataLine, color: color.inkMuted },
+  tierOptionActive: { color: color.ink },
+  costField: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  costPrefix: { ...type.dataLine, color: color.inkMuted },
+  costInput: { ...type.dataLine, color: color.ink, minWidth: 56, textAlign: 'right', padding: 0 },
   visRow: { flexDirection: 'row', gap: space.xl },
   visOption: { ...type.dataLine, color: color.inkMuted },
   visOptionActive: { color: color.ink },

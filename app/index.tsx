@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, View, Pressable, useWindowDimensions } fr
 import { router, useFocusEffect } from 'expo-router';
 import { color, layout, space, type } from '../theme/tokens';
 import { useFeed } from '../hooks/useFeed';
+import { useNearby } from '../hooks/useNearby';
 import { useDelayedLoading } from '../hooks/useDelayedLoading';
 import { Masonry, columnCountForWidth } from '../components/feed/Masonry';
 import { TilePlaceholder } from '../components/shell/Placeholder';
@@ -25,8 +26,18 @@ export default function QuestList() {
   const { width } = useWindowDimensions();
   const columns = columnCountForWidth(width);
 
-  const { items, status, reload, refresh } = useFeed();
-  const showLoading = useDelayedLoading(status === 'loading');
+  const feed = useFeed();
+  // "nearby" is layered alongside the time feed so the default path keeps its focus-refresh.
+  // It only fetches (and only prompts for location) once the nearby tab is actually selected.
+  const isNearby = active === 'nearby';
+  const nearby = useNearby(isNearby);
+
+  const items = isNearby ? nearby.items : feed.items;
+  const status = isNearby ? nearby.status : feed.status;
+  const reload = isNearby ? nearby.reload : feed.reload;
+  const refresh = feed.refresh;
+  // 'idle' is nearby's pre-fetch tick; treat it as loading so there's no empty flash.
+  const showLoading = useDelayedLoading(status === 'loading' || (isNearby && status === 'idle'));
 
   // Quietly re-fetch when the feed regains focus (e.g. back from posting), so a new post
   // shows without a placeholder flash. Skip the first focus — the initial load already ran.
@@ -41,9 +52,10 @@ export default function QuestList() {
     }, [refresh]),
   );
 
-  // A failed load takes the whole surface — retry is the one move that can work here
-  // (SHELL_SPEC state matrix: Quest list · Error → StateScreen kind="failed").
-  if (status === 'error') {
+  // A failed *time feed* load takes the whole surface — retry is the one move that can work
+  // (SHELL_SPEC state matrix: Quest list · Error → StateScreen kind="failed"). A nearby failure
+  // is handled inline instead, so the tabs stay reachable and the user can switch back.
+  if (!isNearby && status === 'error') {
     return <StateScreen kind="failed" onPrimary={reload} />;
   }
 
@@ -85,8 +97,22 @@ export default function QuestList() {
           reactions, so they must never say the same thing (DESIGN.md → Shell States). */}
       {status === 'ready' && items.length === 0 ? (
         <View style={styles.empty} accessibilityLiveRegion="polite">
-          <Text style={styles.emptyLine}>{SHELL_COPY.emptyFeed.toUpperCase()}</Text>
-          <Text style={styles.emptyHint}>{SHELL_COPY.emptyFeedBody}</Text>
+          <Text style={styles.emptyLine}>{(isNearby ? SHELL_COPY.emptyNearby : SHELL_COPY.emptyFeed).toUpperCase()}</Text>
+          <Text style={styles.emptyHint}>{isNearby ? SHELL_COPY.emptyNearbyBody : SHELL_COPY.emptyFeedBody}</Text>
+        </View>
+      ) : null}
+
+      {/* Nearby needs a location grant, and a nearby fetch can fail — both handled inline (not
+          full-screen) so the tabs stay put. Each offers the one move that helps: grant + retry. */}
+      {isNearby && (status === 'needsLocation' || status === 'error') ? (
+        <View style={styles.empty} accessibilityLiveRegion="polite">
+          <Text style={styles.emptyLine}>
+            {(status === 'needsLocation' ? SHELL_COPY.nearbyDenied : SHELL_COPY.nearbyError).toUpperCase()}
+          </Text>
+          {status === 'needsLocation' ? <Text style={styles.emptyHint}>{SHELL_COPY.nearbyDeniedBody}</Text> : null}
+          <Pressable onPress={reload} hitSlop={8} accessibilityRole="button">
+            <Text style={styles.retry}>{SHELL_COPY.retry}</Text>
+          </Pressable>
         </View>
       ) : null}
 
@@ -133,7 +159,9 @@ const styles = StyleSheet.create({
   pageContent: {
     paddingTop: space.huge,
     paddingHorizontal: layout.masonryMargin,
-    paddingBottom: space.xxl,
+    // Clear the pinned "post a sidequest" pill (bottom xxl + 48pt tall): the last tile must
+    // not sit under it. xxl + xxl + xxl ≈ pill bottom offset + pill height + a gap.
+    paddingBottom: space.xxl * 3,
   },
   chrome: {
     flexDirection: 'row',
@@ -201,6 +229,12 @@ const styles = StyleSheet.create({
     color: color.inkMuted,
     textAlign: 'center',
     maxWidth: 280,
+  },
+  retry: {
+    ...type.dataLine,
+    color: color.ink,
+    textDecorationLine: 'underline',
+    marginTop: space.sm,
   },
   compose: {
     position: 'absolute',

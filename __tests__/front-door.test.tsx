@@ -17,6 +17,12 @@ let mockFeedState: { items: FeedItem[]; status: string; reload: jest.Mock };
 const reload = jest.fn();
 jest.mock('../hooks/useFeed', () => ({ useFeed: () => mockFeedState }));
 
+// Nearby is layered on the same screen; stub it too (its fetch + location prompt live in the
+// hook, tested via lib/feed + pgTAP). Default 'idle' = the pre-select tick.
+let mockNearbyState: { items: FeedItem[]; status: string; reload: jest.Mock };
+const nearbyReload = jest.fn();
+jest.mock('../hooks/useNearby', () => ({ useNearby: () => mockNearbyState }));
+
 // Loading is delay-gated in real life; make it deterministic in the test.
 jest.mock('../hooks/useDelayedLoading', () => ({ useDelayedLoading: (isLoading: boolean) => isLoading }));
 
@@ -34,7 +40,9 @@ const item = (over: Partial<FeedItem> = {}): FeedItem => ({
 
 beforeEach(() => {
   mockFeedState = { items: [], status: 'ready', reload };
+  mockNearbyState = { items: [], status: 'idle', reload: nearbyReload };
   reload.mockClear();
+  nearbyReload.mockClear();
   mockReplace.mockClear();
 });
 
@@ -50,7 +58,7 @@ describe('QuestList (front door)', () => {
     mockFeedState = { items: [item()], status: 'ready', reload };
     render(<QuestList />);
     expect(screen.getByText(/every neon sign london/)).toBeTruthy();
-    expect(screen.getByText('4TH EVER')).toBeTruthy();
+    expect(screen.getByText('4TH')).toBeTruthy(); // tile drops the EVER suffix (detail keeps it)
     expect(screen.getByText('WALTHAMSTOW')).toBeTruthy();
   });
 
@@ -80,5 +88,23 @@ describe('QuestList (front door)', () => {
     render(<QuestList />);
     fireEvent.press(screen.getByText('rarest'));
     expect(screen.getByText('rarest')).toBeTruthy();
+  });
+
+  it('the nearby tab shows a location prompt inline (tabs stay reachable), retry wired', () => {
+    mockNearbyState = { items: [], status: 'needsLocation', reload: nearbyReload };
+    render(<QuestList />);
+    fireEvent.press(screen.getByText('nearby'));
+    expect(screen.getByText(/NEARBY NEEDS YOUR LOCATION/)).toBeTruthy();
+    fireEvent.press(screen.getByText('try again'));
+    expect(nearbyReload).toHaveBeenCalled();
+    // still inline — the tabs (and the time feed) weren't replaced by a full-screen state
+    expect(screen.getByText('what’s new')).toBeTruthy();
+  });
+
+  it('the nearby tab renders its own distance-sorted tiles when ready', () => {
+    mockNearbyState = { items: [item({ id: 'n1', neighbourhood: 'Deptford' })], status: 'ready', reload: nearbyReload };
+    render(<QuestList />);
+    fireEvent.press(screen.getByText('nearby'));
+    expect(screen.getByText('DEPTFORD')).toBeTruthy();
   });
 });

@@ -26,7 +26,15 @@ jest.mock('../lib/supabase', () => ({
 }));
 
 const mockCreatePost = jest.fn().mockResolvedValue({ post: { id: 'new1' }, xp_total: 50, level: 2, leveled_up: true });
-jest.mock('../lib/posts', () => ({ createPost: (...a: any[]) => mockCreatePost(...a) }));
+jest.mock('../lib/posts', () => ({
+  createPost: (...a: any[]) => mockCreatePost(...a),
+  // poundsToPence is pure; use the real one so the cost field maps as it does in the app.
+  poundsToPence: jest.requireActual('../lib/posts').poundsToPence,
+}));
+
+// captureLocation is thin device glue; stub it so the screen's wiring is what's under test.
+const mockCaptureLocation = jest.fn().mockResolvedValue({ lat: 51.5, lon: -0.07, neighbourhood: 'Shoreditch' });
+jest.mock('../lib/location', () => ({ captureLocation: (...a: any[]) => mockCaptureLocation(...a) }));
 
 import Compose from '../app/compose';
 
@@ -34,6 +42,7 @@ beforeEach(() => {
   mockParams = {};
   mockReplace.mockClear();
   mockCreatePost.mockClear();
+  mockCaptureLocation.mockClear();
 });
 
 async function attachPhotoAndPost() {
@@ -55,6 +64,62 @@ describe('Compose', () => {
     expect(arg.title).toBe('swim the ponds at dawn');
     expect(arg.templateId).toBeNull();
     expect(mockReplace).toHaveBeenCalledWith('/quest/new1');
+  });
+
+  it("a fresh post sends the author's classification (016), and leaves unset axes null", async () => {
+    mockParams = {};
+    render(<Compose />);
+    fireEvent.press(screen.getByLabelText('effort high')); // effort → 3
+    fireEvent.press(screen.getByLabelText('nerve low')); // nerve → 1
+    fireEvent.changeText(screen.getByLabelText('cost in pounds'), '4.50');
+    await attachPhotoAndPost();
+
+    const arg = mockCreatePost.mock.calls[0][0];
+    expect(arg.effort).toBe(3);
+    expect(arg.nerve).toBe(1);
+    expect(arg.costPence).toBe(450);
+  });
+
+  it('a fresh post attaches captured location when the author adds it (019)', async () => {
+    mockParams = {};
+    render(<Compose />);
+    fireEvent.press(screen.getByLabelText('add location'));
+    await screen.findByText('SHOREDITCH'); // the captured neighbourhood shows in the WHERE row
+    await attachPhotoAndPost();
+
+    const arg = mockCreatePost.mock.calls[0][0];
+    expect(arg.neighbourhood).toBe('Shoreditch');
+    expect(arg.lat).toBe(51.5);
+    expect(arg.lon).toBe(-0.07);
+  });
+
+  it('a fresh post with no location added sends null location', async () => {
+    mockParams = {};
+    render(<Compose />);
+    await attachPhotoAndPost();
+
+    const arg = mockCreatePost.mock.calls[0][0];
+    expect(arg.neighbourhood).toBeNull();
+    expect(arg.lat).toBeNull();
+    expect(mockCaptureLocation).not.toHaveBeenCalled();
+  });
+
+  it('a redo classifies nothing — the quest already has its axes', async () => {
+    mockParams = { templateId: 't7', questTitle: 'night market crawl' };
+    render(<Compose />);
+
+    // no classify UI in redo mode (axes and location both come from the template)
+    expect(screen.queryByLabelText('effort high')).toBeNull();
+    expect(screen.queryByLabelText('cost in pounds')).toBeNull();
+    expect(screen.queryByLabelText('add location')).toBeNull();
+
+    await attachPhotoAndPost();
+    const arg = mockCreatePost.mock.calls[0][0];
+    expect(arg.effort).toBeNull();
+    expect(arg.nerve).toBeNull();
+    expect(arg.costPence).toBeNull();
+    expect(arg.neighbourhood).toBeNull();
+    expect(arg.lat).toBeNull();
   });
 
   it('a redo carries the template and drops the name (the template already names it)', async () => {

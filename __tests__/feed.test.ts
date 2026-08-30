@@ -14,6 +14,7 @@ const row = (over: any = {}) => ({
   caption: 'a japanese garden the herons do not care about',
   completion_ordinal: 4,
   created_at: '2026-08-19T00:00:00Z',
+  neighbourhood: null,
   author: { handle: 'theo' },
   template: { neighbourhood: 'Holland Park' },
   photos: [
@@ -39,6 +40,11 @@ describe('toFeedItem', () => {
   it('survives a template-less, photo-less, author-less post', () => {
     const item = toFeedItem(row({ template: null, author: null, photos: [], completion_ordinal: null }) as any);
     expect(item).toMatchObject({ ordinal: null, neighbourhood: null, handle: null, photo: null });
+  });
+
+  it('falls back to the post neighbourhood before a template is minted (019)', () => {
+    const item = toFeedItem(row({ template: null, neighbourhood: 'Peckham' }) as any);
+    expect(item.neighbourhood).toBe('Peckham');
   });
 });
 

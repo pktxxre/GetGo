@@ -3,11 +3,210 @@
 For the *why* behind decisions, read `CLAUDE.md`, `DESIGN.md`, `SHELL_SPEC.md`, and the
 original `HANDOFF.md`. This file is the running "what do I do next" log — newest update first.
 
-## ▶ START HERE — current state (2026-08-21, end of session)
+## ▶ START HERE — current state (2026-08-30, end of session)
 
-**PR #1 is merged into `main`** (browse → save core loop). This session built on top and is
-**shipping now** via `/ship` from branch `pktxxre/continue-building` (a new PR off `main`). Once
-that lands, `main` has the full two-sided loop. Until then the work below lives on that branch.
+**PR #4 is OPEN, not yet merged** (`https://github.com/pktxxre/GetGo/pull/4`), on branch
+`pktxxre/keep-building` — three commits (48ba3f5 fonts/version · df76c34 app features · 22c8be5
+backend), cut as **v0.4.0.0**. `main` is still at `b188e51` (PR #3), so this work only lives on
+the branch until #4 lands. **If you want a clean base, merge #4 first**, then build on `main`;
+otherwise keep going on this branch.
+
+**What #4 ships (all built + tested this session):** the **nearby feed tab**, a **user-quests
+profile** (tap a byline), **post-time location capture**, **cross-restart session persistence**,
+**effort/nerve/cost axes capture in compose**, and **real fonts finally loading**
+(Fraunces/Schibsted/Martian Mono). Migrations through **022**. Verified: **pgTAP 160 · Jest 81 ·
+tsc clean · web build (6 routes)**, plus an iOS-Simulator design pass (report + before/after shots
+in `~/.gstack/projects/pktxxre-GetGo/ios-design-review-20260828/`).
+
+**Recommended next (all unblocked except the last):**
+1. **Image grade (T11)** — DESIGN.md's `+3 warmth / −6 saturation / 4% grain` on every photo is
+   specified and still unimplemented. Technical choice open (RN `filter` style prop on 0.86 New
+   Arch, or a color-matrix lib; grain needs a noise overlay asset). DESIGN itself flags it needs
+   validating against real London photos.
+2. **`delete_account` (T9)** — App-Store/compliance gate. **Must anonymise/soft-delete, not
+   cascade** (a hard delete of a user's posts would shift others' rarity/ordinals — CLAUDE.md
+   invariant). Check the `users → auth.users` FK before designing; worth a `/spec` pass.
+3. **The Validation Gate** — T18 web funnel + T19 analytics. The launch instrument.
+4. **Hosted-backend migration (blocker for any public link)** — hosted project still has **no
+   migrations applied** (now through 022). Needs the hosted DB password or a Supabase access
+   token; only the publishable key is on hand, which can't push. This gates everything user-facing.
+
+**Design polish left from the iOS pass (optional):** the pinned pill still floats over mid-scroll
+content (a bone scrim behind it is the fix); longer neighbourhoods (`212TH · HOLLAND…`) still clip
+a little; muted-text contrast on bone (F5) unverified. `nearby` loaded-state and compose's
+below-fold rows were Jest-verified, not eyeballed (no on-device tap automation).
+
+**To run locally:** `colima start && npx supabase start` (both crashed on a full disk this session
+— watch disk space), `.env` points at local, OTP codes land in Mailpit (`:54324`), `npx expo start`.
+Simulator review path: Expo Go + deep-link `exp://<lan-ip>:8081/--/<route>` (all app native modules
+are in Expo Go SDK 57, and `127.0.0.1` reaches the host Supabase from the sim).
+
+## Update — 2026-08-30: iOS design review on the simulator — fonts now load (uncommitted)
+
+Ran `/ios-design-review` on the iOS Simulator (iPhone 16e) via Expo Go against the local stack,
+deep-linking to each screen. Colour discipline, loading/empty/error, and AI-slop all scored high;
+the app is genuinely on-brand. **The one big finding: the custom fonts were never loaded** — tokens
+named Fraunces/Schibsted/Martian Mono but nothing loaded them, so every screen rendered in system
+SF, losing the identity (worst for the mono fact-lines DESIGN calls load-bearing). Fixed all four
+findings the user approved:
+
+- **Fonts (F1)** — `expo-font` + `@expo-google-fonts/{fraunces,schibsted-grotesk,martian-mono}`,
+  loaded in `app/_layout.tsx` (`useFonts` + splash hold, degrades to system on failure).
+  `theme/tokens.ts` now uses weight-specific family names and drops `fontWeight`. Verified on-device:
+  Fraunces titles, Martian Mono fact-lines/stamp labels, Schibsted body.
+- **Fact-line truncation (F2)** — `QuestTile` drops `EVER` (uses `ordinalize`); `4TH · TWICKENHAM`
+  no longer clips. `front-door.test` updated (`4TH EVER` → `4TH`).
+- **Pill occlusion (F3)** — feed bottom padding tripled so the last tile clears the pinned pill.
+- **Sticky-bar clearance (F4)** — compose + quest `scrollContent` padding 96→120.
+- **Verified** — `tsc` clean, Jest **81**, web export builds all 6 routes, on-device screenshots.
+  Full report + before/after shots: `~/.gstack/projects/pktxxre-GetGo/ios-design-review-20260828/`.
+- **Env note:** the disk hit 100% mid-review and crashed colima/Supabase; freed space, `colima start`
+  + `supabase start` brought it back. A local Metro + a booted sim may still be running.
+
+## Update — 2026-08-21 (cont.): the "nearby" feed tab is wired (uncommitted)
+
+The `nearby` tab was a label in `TABS` that showed the time feed like every other unwired tab
+(DESIGN.md lists it; only "what's new" was live). Now that posts capture geog (020), it sorts
+the feed by distance from the viewer. Dogfoods the location work and reuses the exact masonry —
+no new visual component.
+
+- **`022_feed_nearby.sql`** — `feed_nearby(lon, lat, limit)` returns `setof posts` ordered by
+  the PostGIS `<->` KNN operator against the gist index (003). **SECURITY INVOKER on purpose**:
+  the body's select runs as the caller, so `posts_visible` RLS hides private posts by distance
+  exactly as on the feed — a definer here would leak them. pgTAP **+5** (nearest-first ordering;
+  a stranger doesn't get a nearby private post; the owner does).
+- **Client** — `lib/location.getCoords()` (position only, no reverse geocode), `lib/feed.fetchNearby(coords)`
+  (rpc → `.select(FEED_SELECT)` embed, same mapper as the time feed), `hooks/useNearby.ts` (lazy —
+  no fetch and no location prompt until the tab is selected; `needsLocation` is its own state, not
+  an error).
+- **`app/index.tsx`** — nearby is *layered alongside* `useFeed`, not replacing it, so the default
+  path keeps its focus-refresh. Nearby's `needsLocation`/`error` render **inline** (reusing the
+  empty-state styles + a mono "try again"), so the tabs stay reachable instead of a full-screen
+  takeover. popular/rarest stay inert (they need phase-2 median-relative reception XP).
+- **Verified** — `tsc` clean, Jest **81** (+2: nearby location-prompt inline + retry wiring, and
+  nearby renders its own tiles), pgTAP **160** (+5, `022_feed_nearby_test`), web export builds all
+  6 routes.
+
+## Update — 2026-08-21 (cont.): a user's quests — the first profile surface (uncommitted)
+
+There was no way to see one person's history — after posting, your quests vanished into the
+feed. Tapping any byline (yours or anyone's) now opens **their** completed quests, newest first.
+Pure client over existing RLS — no backend, no migration.
+
+- **Built entirely from approved components** — the feed's `Masonry` + `QuestTile`, the shell's
+  `StateScreen`/`TilePlaceholder`/`BackLink`. No new visual language; it reads as the same
+  product scoped to one author. ⚠️ **The screen itself has no DESIGN.md spec** — it composes
+  existing primitives rather than inventing any, but a `/design-review` pass is worth doing
+  before it ships (the one judgment call this session).
+- **RLS is the visibility branch** — `lib/feed.fetchUserPosts(userId)` is the feed query filtered
+  by `user_id`; `posts_visible` already means *your own* page shows your private posts while a
+  stranger's shows only public ones. No "is this me?" special case.
+- **`app/user/[id].tsx` (new)** + `hooks/useUserPosts.ts` (new, same tiny shape as `useFeed`).
+  Titled `@handle` from the route param, falling back to a fetched post's author on a cold deep
+  link. Entry point: the quest-detail **byline is now a link** (`lib/quest` gained `authorId`);
+  the front-door chrome is untouched.
+- **Verified** — `tsc` clean, Jest **79** (+5: profile screen states/titling ×4, byline-links
+  ×1), web export builds all 6 routes (`/user/[id]` registered). pgTAP unchanged (**155**).
+
+## Update — 2026-08-21 (cont.): post-time location capture — the fact line fills in (uncommitted)
+
+The `ORDINAL · NEIGHBOURHOOD` fact line stops reading "—" for user posts. The author opts in to
+device location at compose time; it's reverse-geocoded to an area name, stored on the post, and
+copied onto the template on mint — the same post→mint→template flow as the axes (016–018), and
+the same shape as title. Coordinates also land on the post's geog, feeding the phase-2 nearby/
+city-leaderboard work (C4). `expo-location` was already a dependency (and its permission string
+already in app.json), so no new native module.
+
+- **`019_post_neighbourhood.sql`** — `posts.neighbourhood text` (1..60 CHECK — a label, not
+  prose). Nullable, rides posts RLS.
+- **`020_create_post_neighbourhood.sql`** — `create_post` gains `p_neighbourhood` (appended after
+  017's axes; `p_lon`/`p_lat`/`p_city` were already params since 007 — the client just didn't send
+  them before, now it does).
+- **`021_mint_neighbourhood.sql`** — the mint copies `neighbourhood` onto the template alongside
+  geog/axes. Pure column-copy.
+- **Client** — `lib/location.ts` (new: pure `pickNeighbourhood` picks the most-local area label
+  and falls outward to the city, Jest-proven; `captureLocation` is the permission+GPS+geocode
+  glue, returns null on denial — a quiet skip). `lib/posts.ts` (lon/lat/neighbourhood → RPC).
+  `app/compose.tsx` (a WHERE row in the classify block: "add location" → "SHOREDITCH", tap to
+  clear; fresh posts only — a redo inherits the template's location). `lib/feed.ts` + `lib/quest.ts`
+  now fall back to the post's own neighbourhood before a template is minted (mirrors the title
+  fallback).
+- **Verified** — pgTAP **155** (+7: 019 ×4, 007 +2, 015 +1), Jest **74** (+7: `pickNeighbourhood`
+  ×3, feed/quest fallback ×2, compose location ×2), `tsc` clean, web export builds all 5 routes.
+  DB path (create_post stores it, mint copies it) and client wiring both covered.
+
+## Update — 2026-08-21 (cont.): session persists across restarts (uncommitted)
+
+The "logged out on every reload" bug is gone — the longest-standing open item. The OTP auth
+decision was long settled, so the only thing missing was a storage adapter; the session was
+held in memory and evaporated on restart. Now the Supabase client persists it via AsyncStorage,
+so `getSession()` rehydrates a prior sign-in on cold start.
+
+- **`@react-native-async-storage/async-storage`** — installed via `npx expo install` (SDK-57
+  compatible, 2.2.0). Backed by native storage on device and localStorage on web, so one
+  adapter covers both platforms. (Noticed in passing: `expo-location`/`expo-camera` are already
+  deps, so the deferred location-capture task needs no new native module either.)
+- **`lib/supabase.ts`** — `persistSession: true` + `storage: AsyncStorage` (was
+  `persistSession: false`). `detectSessionInUrl` stays false (typed OTP codes, no magic-link
+  redirect). Added AppState `start/stopAutoRefresh` per Supabase's RN guidance (refresh only
+  while foregrounded). **SSR guard:** Expo's web build statically prerenders routes in Node,
+  where AsyncStorage's localStorage access throws `window is not defined`; `isWebSSR`
+  (`Platform.OS === 'web' && typeof window === 'undefined'`) swaps in a no-op storage and skips
+  the AppState listener during prerender only — device and browser still persist. This was the
+  real snag and is what the web-export failure surfaced.
+- **`lib/auth.tsx`** — the "session is in-memory / persistence is a follow-up" comment corrected.
+- **`jest.setup.js` (new) + package.json** — AsyncStorage is a native module (null under Jest);
+  wired the library's official in-memory mock via `setupFiles` so any test importing the client
+  constructs cleanly.
+- **Verified** — `tsc` clean, Jest **67** (+2: new `supabase.test.ts` locks the persistence
+  contract — persistSession true, storage present, detectSessionInUrl false), web export builds
+  all 5 routes (the SSR guard proven by that build passing). pgTAP unchanged (**148**, no DB
+  touched). **Not yet confirmed on a real device/browser reload** — that's the final check
+  (sign in → hard-reload → still signed in); the config + build prove the wiring.
+
+**Next open:** ~~location capture~~ (done — see the location entry above), multi-photo compose + a
+detail gallery (design decision — DESIGN is single-hero, "nothing floats on a photograph", so a
+carousel/indicator needs approval),
+a **quest-log / "you" surface** (no way yet to see your own posts/saves — the promised "quest
+log"; no DESIGN spec exists, so worth an `/office-hours` or `/spec` pass), `delete_account` (T9 —
+must anonymise/soft-delete, not cascade, so stamped ordinals + rarity counts survive per CLAUDE.md),
+and the **hosted-backend migration** (still un-migrated, now through 018; needs the hosted DB
+password or an access token — only the publishable key is on hand, which can't push).
+
+## Update — 2026-08-21 (cont.): axes capture in compose — minted templates aren't axis-less (uncommitted)
+
+The stamp block's top gap closed. A minted template used to show "—" for effort/nerve/cost
+forever, because nothing captured them: the author classifies the quest, but a first-of-its-kind
+post had nowhere to hold that until the template was minted (on someone else's save). Now the
+author classifies at post time, it's stored on the post, and the mint copies it onto the
+template — exactly how `title` and `geog` already flow (post carries it → mint copies it → the
+stamp block reads it off the template).
+
+- **`016_post_axes.sql`** — `posts.effort`/`nerve` (smallint 1..3) + `cost_pence` (integer, 0=free),
+  same bounds/CHECKs as 009's template axes, all nullable (classifying is optional). Rides the
+  existing posts RLS (like 013's title). A redo post may carry them too but the detail reads axes
+  off the template, so a redo's post-level axes are inert.
+- **`017_create_post_axes.sql`** — `create_post` gains `p_effort`/`p_nerve`/`p_cost_pence`,
+  appended after 014's `p_title` (same additive-tail discipline as 012/014), stored on the post.
+- **`018_mint_axes.sql`** — `mint_template_from_post` copies effort/nerve/cost_pence onto the
+  minted template alongside title/geog. Pure column-copy; idempotency/lock/visibility unchanged.
+- **Client** — `lib/posts.ts` (`CreatePostInput.effort/nerve/costPence` → RPC; pure
+  `poundsToPence` maps the £ field → pence, Jest-proven), `app/compose.tsx` (a "classify" block —
+  low/mid/high tap-picks for effort & nerve, a £ cost field — fresh post only; a redo inherits the
+  quest's axes so the block is hidden). Detail screen unchanged — it already reads axes off the
+  template, so minted templates now render real values.
+- **Scope note:** location capture (create_post already takes lon/lat/city; mint already copies
+  geog) is still deferred — it needs `expo-location` + reverse-geocode for the neighbourhood name.
+  Neighbourhood stays "—" on minted templates until then.
+- **Verified** — pgTAP **148** (+11: 016 ×6, 007 +3, 015 +2), Jest **65** (+5: `poundsToPence` ×3,
+  compose axes ×2), `tsc` clean, web build OK. DB path (create_post stores axes, mint copies them)
+  and client wiring (what compose hands createPost) both covered.
+
+**Next open:** location capture (expo-location + neighbourhood reverse-geocode), multi-photo
+compose, `delete_account` (T9), the **hosted-backend migration** (hosted project still has no
+migrations applied — now through 018), and cross-restart session persistence (async-storage).
+
+## ▶ Earlier state (PR #3, merged)
 
 **What now works, end to end (the whole loop):**
 - **Onboarding handle claim** — first sign-in picks a handle (no more `@null` bylines).

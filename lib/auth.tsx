@@ -8,10 +8,11 @@ import { supabase } from './supabase';
  * social-SDK setup, no deep-link redirect dance, identical on web and native. Social + Sign
  * in with Apple is the App Store gate and lands with the native build, not the funnel.
  *
- * Session is held in memory (the supabase client keeps it and injects the bearer token, so
- * authenticated PostgREST calls Just Work for the session's life). Cross-restart persistence
- * needs a storage adapter (@react-native-async-storage/async-storage) — a deliberate
- * follow-up, not wired here so no native module is added mid-flight.
+ * The supabase client keeps the session and injects the bearer token, so authenticated
+ * PostgREST calls Just Work. The client now persists that session across restarts via an
+ * AsyncStorage adapter (see lib/supabase.ts), so `getSession()` below rehydrates a prior
+ * sign-in on cold start — no re-auth on every reload. `onAuthStateChange` keeps this provider
+ * in sync with sign-in, token refresh and sign-out.
  */
 
 type AuthContextValue = {

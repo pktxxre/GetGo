@@ -115,7 +115,22 @@ export default function QuestDetail() {
           </View>
 
           {quest.caption ? <Text style={styles.caption}>{quest.caption}</Text> : null}
-          {quest.handle ? <Text style={styles.byline}>@{quest.handle}</Text> : null}
+          {quest.handle ? (
+            quest.authorId ? (
+              <Pressable
+                onPress={() =>
+                  router.push({ pathname: '/user/[id]', params: { id: quest.authorId!, handle: quest.handle! } })
+                }
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`see @${quest.handle}'s quests`}
+              >
+                <Text style={styles.byline}>@{quest.handle}</Text>
+              </Pressable>
+            ) : (
+              <Text style={styles.byline}>@{quest.handle}</Text>
+            )
+          ) : null}
 
           {/* Reception is a sentence, not a widget. No hearts, no bars. */}
           <Text style={styles.reception}>{receptionSentence(quest.awesome, quest.couldBeCooler)}</Text>
@@ -168,7 +183,7 @@ const styles = StyleSheet.create({
     backgroundColor: color.ground,
   },
   scrollContent: {
-    paddingBottom: 96, // clear the sticky action bar
+    paddingBottom: 120, // clear the sticky action bar (save it + "i did this too") with room
   },
   hero: {
     width: '100%',

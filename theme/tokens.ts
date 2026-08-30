@@ -41,30 +41,36 @@ export const layout = {
 } as const;
 
 /**
- * Typeface families. Fonts are not yet self-hosted (DESIGN.md: subset woff2, ~95KB).
- * Until then these fall back to system stacks so the app runs; wiring real fonts is
- * its own task. The three roles each have exactly one job:
+ * Typeface families. Loaded from @expo-google-fonts in app/_layout.tsx (useFonts) with the
+ * splash held until they're ready — before that the whole app fell back to system SF and lost
+ * its identity, most visibly the mono fact-lines. Each family name is weight-specific (that's
+ * the reliable RN pattern — the family encodes the weight, so we never set fontWeight and never
+ * get iOS synthetic bolding). The three roles each have exactly one job:
  *   display — Fraunces      (wordmark, quest titles, stamp values)
  *   text    — Schibsted     (body, captions)
  *   mono    — Martian Mono  (STAMPED FACTS ONLY — counts, postcodes, cost, tabs)
+ * The keys registered in useFonts MUST match these strings exactly.
  */
 export const font = {
-  display: 'Fraunces',
-  text: 'Schibsted Grotesk',
-  mono: 'Martian Mono',
+  display: 'Fraunces_400Regular',
+  displayMedium: 'Fraunces_500Medium',
+  text: 'SchibstedGrotesk_400Regular',
+  textSemibold: 'SchibstedGrotesk_600SemiBold',
+  mono: 'MartianMono_500Medium',
 } as const;
 
-// Type scale (mobile, 390pt). role -> style fragment.
+// Type scale (mobile, 390pt). role -> style fragment. Weight lives in the family name, so no
+// fontWeight here (setting it alongside a single-weight custom family risks a faux-bold).
 export const type = {
-  heroTitle: { fontFamily: font.display, fontSize: 40, lineHeight: 40, fontWeight: '400' as const, letterSpacing: -0.8 },
-  detailTitle: { fontFamily: font.display, fontSize: 30, lineHeight: 32, fontWeight: '400' as const, letterSpacing: -0.45 },
-  listTitle: { fontFamily: font.display, fontSize: 20, lineHeight: 23, fontWeight: '500' as const, letterSpacing: -0.2 },
-  stampValue: { fontFamily: font.display, fontSize: 22, lineHeight: 22, fontWeight: '500' as const, letterSpacing: -0.22 },
-  wordmark: { fontFamily: font.display, fontSize: 22, lineHeight: 26, fontWeight: '400' as const, letterSpacing: -0.22 },
-  body: { fontFamily: font.text, fontSize: 16, lineHeight: 24, fontWeight: '400' as const },
-  tileCaption: { fontFamily: font.text, fontSize: 15, lineHeight: 20, fontWeight: '400' as const },
-  secondary: { fontFamily: font.text, fontSize: 14, lineHeight: 20, fontWeight: '400' as const, letterSpacing: 0.07 },
-  buttonLabel: { fontFamily: font.text, fontSize: 15, lineHeight: 15, fontWeight: '600' as const, letterSpacing: 0.15 },
-  dataLine: { fontFamily: font.mono, fontSize: 12, lineHeight: 12, fontWeight: '500' as const, letterSpacing: 0.96 },
-  microLabel: { fontFamily: font.mono, fontSize: 10, lineHeight: 12, fontWeight: '500' as const, letterSpacing: 1.2 },
+  heroTitle: { fontFamily: font.display, fontSize: 40, lineHeight: 40, letterSpacing: -0.8 },
+  detailTitle: { fontFamily: font.display, fontSize: 30, lineHeight: 32, letterSpacing: -0.45 },
+  listTitle: { fontFamily: font.displayMedium, fontSize: 20, lineHeight: 23, letterSpacing: -0.2 },
+  stampValue: { fontFamily: font.displayMedium, fontSize: 22, lineHeight: 22, letterSpacing: -0.22 },
+  wordmark: { fontFamily: font.display, fontSize: 22, lineHeight: 26, letterSpacing: -0.22 },
+  body: { fontFamily: font.text, fontSize: 16, lineHeight: 24 },
+  tileCaption: { fontFamily: font.text, fontSize: 15, lineHeight: 20 },
+  secondary: { fontFamily: font.text, fontSize: 14, lineHeight: 20, letterSpacing: 0.07 },
+  buttonLabel: { fontFamily: font.textSemibold, fontSize: 15, lineHeight: 15, letterSpacing: 0.15 },
+  dataLine: { fontFamily: font.mono, fontSize: 12, lineHeight: 12, letterSpacing: 0.96 },
+  microLabel: { fontFamily: font.mono, fontSize: 10, lineHeight: 12, letterSpacing: 1.2 },
 } as const;

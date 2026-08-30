@@ -7,7 +7,7 @@
 -- real authenticated caller hits, while letting the test capture the returned jsonb.
 
 begin;
-select plan(21);
+select plan(26);
 
 insert into auth.users (id, instance_id, email) values
   ('88888888-8888-8888-8888-888888888888', '00000000-0000-0000-0000-000000000000', 'u1@getgo.test'),
@@ -129,6 +129,41 @@ select is(
 select is(
   (select title from public.posts where id = 'c5000000-0000-0000-0000-000000000000'),
   null, 'a post created without p_title has NULL title');
+
+-- ── the author's classification (p_effort/p_nerve/p_cost_pence) is stored (016/017) ─
+set local request.jwt.claims to '{"sub":"88888888-8888-8888-8888-888888888888"}';
+select public.create_post(
+  p_post_id     => 'ca000000-0000-0000-0000-000000000000',
+  p_photo_paths => array['photos/axes.jpg'],
+  p_template_id => '66666666-6666-6666-6666-666666666666',
+  p_effort      => 3::smallint,
+  p_nerve       => 1::smallint,
+  p_cost_pence  => 450
+);
+select is(
+  (select effort from public.posts where id = 'ca000000-0000-0000-0000-000000000000'),
+  3::smallint, 'p_effort is stored on the post');
+select is(
+  (select cost_pence from public.posts where id = 'ca000000-0000-0000-0000-000000000000'),
+  450, 'p_cost_pence is stored on the post');
+-- omitting the axes leaves them NULL → the stamp block shows "—", not a guess
+select is(
+  (select effort from public.posts where id = 'c5000000-0000-0000-0000-000000000000'),
+  null, 'a post created without axes has NULL effort');
+
+-- ── the captured neighbourhood (p_neighbourhood) is stored, NULL when omitted (019/020) ──
+select public.create_post(
+  p_post_id       => 'cb000000-0000-0000-0000-000000000000',
+  p_photo_paths   => array['photos/where.jpg'],
+  p_template_id   => '66666666-6666-6666-6666-666666666666',
+  p_neighbourhood => 'Shoreditch'
+);
+select is(
+  (select neighbourhood from public.posts where id = 'cb000000-0000-0000-0000-000000000000'),
+  'Shoreditch', 'p_neighbourhood is stored on the post');
+select is(
+  (select neighbourhood from public.posts where id = 'c5000000-0000-0000-0000-000000000000'),
+  null, 'a post created without a neighbourhood has NULL (fact line shows "—")');
 
 select * from finish();
 rollback;
