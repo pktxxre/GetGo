@@ -3,12 +3,43 @@
 For the *why* behind decisions, read `CLAUDE.md`, `DESIGN.md`, `SHELL_SPEC.md`, and the
 original `HANDOFF.md`. This file is the running "what do I do next" log — newest update first.
 
-## ▶ START HERE — current state (2026-08-21, end of session)
+## ▶ START HERE — current state (2026-08-30, end of session)
 
-**The full two-sided loop is merged into `main`** (PR #1 browse→save, PR #3 post/mint/redo). This
-session is building on a fresh branch `pktxxre/continue-building-v1` off `main`. Five features
-added, all **uncommitted**: the **nearby feed tab**, a **user-quests profile**, **location
-capture**, **session persistence**, and **axes capture in compose** (below). Migrations through **022**.
+**PR #4 is OPEN, not yet merged** (`https://github.com/pktxxre/GetGo/pull/4`), on branch
+`pktxxre/keep-building` — three commits (48ba3f5 fonts/version · df76c34 app features · 22c8be5
+backend), cut as **v0.4.0.0**. `main` is still at `b188e51` (PR #3), so this work only lives on
+the branch until #4 lands. **If you want a clean base, merge #4 first**, then build on `main`;
+otherwise keep going on this branch.
+
+**What #4 ships (all built + tested this session):** the **nearby feed tab**, a **user-quests
+profile** (tap a byline), **post-time location capture**, **cross-restart session persistence**,
+**effort/nerve/cost axes capture in compose**, and **real fonts finally loading**
+(Fraunces/Schibsted/Martian Mono). Migrations through **022**. Verified: **pgTAP 160 · Jest 81 ·
+tsc clean · web build (6 routes)**, plus an iOS-Simulator design pass (report + before/after shots
+in `~/.gstack/projects/pktxxre-GetGo/ios-design-review-20260828/`).
+
+**Recommended next (all unblocked except the last):**
+1. **Image grade (T11)** — DESIGN.md's `+3 warmth / −6 saturation / 4% grain` on every photo is
+   specified and still unimplemented. Technical choice open (RN `filter` style prop on 0.86 New
+   Arch, or a color-matrix lib; grain needs a noise overlay asset). DESIGN itself flags it needs
+   validating against real London photos.
+2. **`delete_account` (T9)** — App-Store/compliance gate. **Must anonymise/soft-delete, not
+   cascade** (a hard delete of a user's posts would shift others' rarity/ordinals — CLAUDE.md
+   invariant). Check the `users → auth.users` FK before designing; worth a `/spec` pass.
+3. **The Validation Gate** — T18 web funnel + T19 analytics. The launch instrument.
+4. **Hosted-backend migration (blocker for any public link)** — hosted project still has **no
+   migrations applied** (now through 022). Needs the hosted DB password or a Supabase access
+   token; only the publishable key is on hand, which can't push. This gates everything user-facing.
+
+**Design polish left from the iOS pass (optional):** the pinned pill still floats over mid-scroll
+content (a bone scrim behind it is the fix); longer neighbourhoods (`212TH · HOLLAND…`) still clip
+a little; muted-text contrast on bone (F5) unverified. `nearby` loaded-state and compose's
+below-fold rows were Jest-verified, not eyeballed (no on-device tap automation).
+
+**To run locally:** `colima start && npx supabase start` (both crashed on a full disk this session
+— watch disk space), `.env` points at local, OTP codes land in Mailpit (`:54324`), `npx expo start`.
+Simulator review path: Expo Go + deep-link `exp://<lan-ip>:8081/--/<route>` (all app native modules
+are in Expo Go SDK 57, and `127.0.0.1` reaches the host Supabase from the sim).
 
 ## Update — 2026-08-30: iOS design review on the simulator — fonts now load (uncommitted)
 
