@@ -1,8 +1,9 @@
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { color, layout, space, type } from '../../theme/tokens';
 import type { FeedItem } from '../../lib/feed';
 import { ordinalize } from '../../lib/format';
+import { GradedImage } from '../GradedImage';
 
 /**
  * One masonry tile: photo → caption → mono fact line (DESIGN.md → Quest list).
@@ -28,10 +29,9 @@ export function QuestTile({ item }: { item: FeedItem }) {
       accessibilityLabel={item.caption ?? 'open quest'}
     >
       {item.photo ? (
-        <Image
+        <GradedImage
           source={{ uri: item.photo.uri }}
           style={[styles.photo, { aspectRatio: item.photo.aspectRatio }]}
-          resizeMode="cover"
           // The photo IS the content; describe it by its caption for screen readers.
           accessibilityRole="image"
           accessibilityLabel={item.caption ?? undefined}
