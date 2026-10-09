@@ -3,6 +3,43 @@
 All notable changes to GetGo are recorded here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions are `MAJOR.MINOR.PATCH.MICRO`.
 
+## [0.5.0.0] - 2026-10-09
+
+Completes the core loop and ships the App Store compliance kit. You can now rate quests, see your
+own log and saved list, report or block people, delete your account, and read the content policy —
+and every photo runs through the archive's warm film grade. Still pre-launch (London-only), local
+Supabase; the hosted backend is now migrated through this release's schema.
+
+### Added
+- **Rate a quest** — `awesome` / `could be cooler` on quest detail (signed-in non-authors only).
+  The reception sentence updates optimistically; re-tapping your choice retracts it. No XP at cast
+  time — reception XP stays median-relative and weekly (phase 2).
+- **Your profile (`/you`)** — two tabs: the quests you've posted and the quests you've saved,
+  reached from a `you` door on the front page. Saved quests show by their canonical origin post.
+- **Settings** — sign out, community guidelines, contact, and **delete account** (an in-app,
+  irreversible delete behind a confirm). Deletion tombstones your account and soft-deletes your
+  posts so other people's rarity counts and ordinals never shift.
+- **Report a quest** — flag objectionable content with a reason and optional note (App Store
+  Guideline 1.2). Reports are private to the reporter; moderation is out of band.
+- **Block a user** — from any profile, hide someone's quests from your feed for good; unblock any
+  time (Guideline 1.2).
+- **Community guidelines + contact** — a content-policy screen (zero tolerance, what's not allowed,
+  how to report/block, 24h moderation, a published contact), linked from settings and agreed to at
+  post time.
+- **System-wide image grade** — every photo renders with +3 warmth, −6 saturation, and a 4%
+  monochrome grain, so a feed of amateur phone photos reads as one warm archive.
+- **Offline banner** — losing signal mid-scroll slides in a `no connection` strip and keeps your
+  loaded content instead of blanking it; it self-dismisses when you're back (debounced).
+- **Session persists across restarts** — a prior sign-in rehydrates on cold start.
+
+### Changed
+- **Front-door chrome** gains a `you` door at top-right (logo-left/account-right); the city +
+  count line moves below it.
+- **`post a sidequest`** is now a 4px-radius ink button, not a pill, and drops its drop shadow
+  (DESIGN: nothing is a pill; no shadows).
+- **Quest detail** shows `i did this too` only to signed-in viewers — a signed-out stranger gets
+  exactly one verb, `save it`.
+
 ## [0.4.0.0] - 2026-08-30
 
 Fills in the parts a posted quest was missing and adds the first ways to browse by person and by
