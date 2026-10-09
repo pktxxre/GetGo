@@ -5,13 +5,20 @@ import type { FeedItem } from '../lib/feed';
 // each status, not to fetch. (The fetch/mapping is covered in lib/feed.test.ts; RLS is
 // pgTAP's job.) StateScreen reaches for the router on the error branch, so stub it too.
 const mockReplace = jest.fn();
+const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: () => ({ replace: mockReplace, back: jest.fn(), canGoBack: () => false }),
-  router: { push: jest.fn(), replace: mockReplace },
+  router: { push: (...a: any[]) => mockPush(...a), replace: mockReplace },
   // The focus refetch is a no-op here — the front door's job is to render the right surface
   // per status, not to re-fetch. (refresh-on-focus behaviour lives with useFeed.)
   useFocusEffect: () => {},
 }));
+
+// The "you" door reads the session to decide push-to-profile vs. auth-first; the auth sheet's
+// internals aren't the front door's concern, so stand it in.
+let mockSession: any;
+jest.mock('../lib/auth', () => ({ useSession: () => ({ session: mockSession }) }));
+jest.mock('../components/auth/AuthSheet', () => ({ AuthSheet: () => null }));
 
 let mockFeedState: { items: FeedItem[]; status: string; reload: jest.Mock };
 const reload = jest.fn();
@@ -44,6 +51,8 @@ beforeEach(() => {
   reload.mockClear();
   nearbyReload.mockClear();
   mockReplace.mockClear();
+  mockPush.mockClear();
+  mockSession = { user: { id: 'u1' } };
 });
 
 describe('QuestList (front door)', () => {
@@ -99,6 +108,19 @@ describe('QuestList (front door)', () => {
     expect(nearbyReload).toHaveBeenCalled();
     // still inline — the tabs (and the time feed) weren't replaced by a full-screen state
     expect(screen.getByText('what’s new')).toBeTruthy();
+  });
+
+  it('the "you" door goes to your profile when signed in', () => {
+    render(<QuestList />);
+    fireEvent.press(screen.getByLabelText('you'));
+    expect(mockPush).toHaveBeenCalledWith('/you');
+  });
+
+  it('the "you" door captures identity first for a stranger (no nav yet)', () => {
+    mockSession = null;
+    render(<QuestList />);
+    fireEvent.press(screen.getByLabelText('you'));
+    expect(mockPush).not.toHaveBeenCalled();
   });
 
   it('the nearby tab renders its own distance-sorted tiles when ready', () => {
