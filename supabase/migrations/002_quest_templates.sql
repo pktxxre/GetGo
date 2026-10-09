@@ -15,6 +15,15 @@
 -- operator resolve unqualified. First use of geography in the schema, so enable it here.
 create extension if not exists postgis with schema extensions;
 
+-- The ambient search_path can't be trusted at apply time: `supabase db push` runs migrations
+-- under a login role whose path doesn't include `extensions`, so the bare `geography` type and
+-- the gist default-opclass below fail to resolve (they work locally only because the local
+-- session already has extensions on its path). Put extensions on the path for this migration so
+-- the schema is self-contained — a fresh `db push` succeeds without relying on role config.
+-- Plain `set` (not `set local`): db push may not wrap each migration in a transaction, where
+-- `set local` would silently no-op. Persisting extensions on the path is harmless.
+set search_path = public, extensions;
+
 create type quest_origin as enum ('curated', 'user');
 
 create table public.quest_templates (

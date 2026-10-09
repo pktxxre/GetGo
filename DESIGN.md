@@ -145,8 +145,12 @@ only quality control available on user-generated imagery. Do not expose it as an
 
 Three things, top to bottom:
 
-1. **One line of chrome.** `getgo` wordmark in green at left; `LONDON · 341 SIDEQUESTS`
-   in mono micro-label at right. Scrolls away and does not come back.
+1. **Chrome, scrolls away and does not come back.** Line one: `getgo` wordmark in green at
+   left; `you` — the account/profile door — as a text link at right (logo-left, account-right,
+   the web convention). Line two: `LONDON · 341 SIDEQUESTS` in a mono micro-label, left.
+   `you` is a text link, **not an icon** (the quest list stays icon-free) and is auth-gated at
+   intent — a stranger tapping it meets the auth sheet first, then lands on their log. The
+   count moved to its own line below when `you` claimed the top-right; see the Decisions Log.
 2. **Text tabs, not pills.** `what's new / popular / rarest / nearby`. Active gets a 2px
    green underline. Reads like the index at the back of a book, not a toolbar.
 3. **2-column masonry.** Photos at native aspect ratio, gutter 11, page margin 14.
@@ -371,6 +375,7 @@ cannot fix.
 
 | Date | Decision | Rationale |
 |---|---|---|
+| 2026-10-09 | Front-door chrome is two lines; `you` takes the top-right and the count drops to line two | The account door (`/you`, added with self-profile/settings) needs a home, and logo-left/account-right is the web convention — which displaced `LONDON · N SIDEQUESTS` from the single chrome line. Blessing the two-line chrome beats fighting the convention to keep one line. `you` is a text link (no icon — the quest list stays icon-free), auth-gated at intent. Flagged and resolved in `/design-review` (report-only), 2026-10-09 |
 | 2026-08-20 | Added `effort`/`nerve` (1..3 tiers) + `cost_pence` to `quest_templates` for the stamp block | The stamp block "replaces every badge, chip, XP counter" and is the core of quest detail — it can't ship rarity-only without three empty cells. Migration `009`, populated from the curated seed; nullable so a redo-minted template shows `—`. Reversible in one migration if the scale changes |
 | 2026-08-18 | Loading is a static layout placeholder, never a shimmer | "No skeleton shimmer" and "the masonry must never move after paint" are the same rule — reserving geometry is the only way to avoid reflow, and animating it is the only part that was ever banned |
 | 2026-08-18 | `developing…` belongs to loading; empty gets its own copy | Both states shared the word (`app/index.tsx` used it for empty), leaving a cold visitor unable to tell "fetching" from "genuinely bare" — the two states needing opposite reactions |
