@@ -5,9 +5,10 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react-nativ
 // upload/RPC round-trip (that's the e2e script + pgTAP).
 let mockParams: { templateId?: string; questTitle?: string };
 const mockReplace = jest.fn();
+const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: () => ({ replace: mockReplace, back: jest.fn(), canGoBack: () => false }),
-  router: { replace: (...a: any[]) => mockReplace(...a), push: jest.fn() },
+  router: { replace: (...a: any[]) => mockReplace(...a), push: (...a: any[]) => mockPush(...a) },
   useLocalSearchParams: () => mockParams,
 }));
 
@@ -41,6 +42,7 @@ import Compose from '../app/compose';
 beforeEach(() => {
   mockParams = {};
   mockReplace.mockClear();
+  mockPush.mockClear();
   mockCreatePost.mockClear();
   mockCaptureLocation.mockClear();
 });
@@ -120,6 +122,14 @@ describe('Compose', () => {
     expect(arg.costPence).toBeNull();
     expect(arg.neighbourhood).toBeNull();
     expect(arg.lat).toBeNull();
+  });
+
+  it('shows the content-policy agreement and links to the guidelines (Guideline 1.2)', () => {
+    mockParams = {};
+    render(<Compose />);
+    expect(screen.getByText(/zero tolerance for objectionable content/)).toBeTruthy();
+    fireEvent.press(screen.getByText('community guidelines'));
+    expect(mockPush).toHaveBeenCalledWith('/guidelines');
   });
 
   it('a redo carries the template and drops the name (the template already names it)', async () => {
