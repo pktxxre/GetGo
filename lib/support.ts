@@ -5,10 +5,9 @@ import { Linking } from 'react-native';
  * way for users to reach the developer (alongside report + block + a content policy). It's a
  * single constant so the guidelines screen and settings never drift.
  *
- * ⚠️ PLACEHOLDER — this must be a real, monitored inbox before App Store submission. Reviewers
- * (and users flagging abuse) email it, so a dead address fails review. Swap it here.
+ * Reviewers (and users flagging abuse) email this, so it must stay a real, monitored inbox.
  */
-export const SUPPORT_EMAIL = 'hello@getgo.app';
+export const SUPPORT_EMAIL = 'atloexo@gmail.com';
 
 /** Open the user's mail client to contact support. Returns the openURL promise for the caller. */
 export function contactSupport(): Promise<unknown> {
