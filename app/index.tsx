@@ -8,7 +8,9 @@ import { useDelayedLoading } from '../hooks/useDelayedLoading';
 import { Masonry, columnCountForWidth } from '../components/feed/Masonry';
 import { TilePlaceholder } from '../components/shell/Placeholder';
 import { StateScreen } from '../components/shell/StateScreen';
+import { AuthSheet } from '../components/auth/AuthSheet';
 import { SHELL_COPY } from '../components/shell/copy';
+import { useSession } from '../lib/auth';
 
 // The front door's text tabs (DESIGN.md → Layout → Quest list). Reads like a book index,
 // not a toolbar. Only "what's new" (newest-first) is wired; the others are labels for now —
@@ -25,6 +27,15 @@ export default function QuestList() {
   const [active, setActive] = useState<Tab>(TABS[0]);
   const { width } = useWindowDimensions();
   const columns = columnCountForWidth(width);
+
+  const { session } = useSession();
+  const [showAuth, setShowAuth] = useState(false);
+  // The self-nav door. Signed-in → your quests; a stranger captures identity first, then lands
+  // there — the same auth-at-the-moment-of-intent shape as `save it`.
+  const onYouPress = () => {
+    if (session?.user?.id) router.push('/you');
+    else setShowAuth(true);
+  };
 
   const feed = useFeed();
   // "nearby" is layered alongside the time feed so the default path keeps its focus-refresh.
@@ -68,11 +79,15 @@ export default function QuestList() {
       contentContainerStyle={styles.pageContent}
       showsVerticalScrollIndicator={false}
     >
-      {/* One line of chrome. Scrolls away and does not come back. */}
+      {/* One line of chrome. Scrolls away and does not come back. The wordmark (identity) and
+          the "you" door share the top line; the city line sits under it. */}
       <View style={styles.chrome}>
         <Text style={styles.wordmark}>getgo</Text>
-        <Text style={styles.cityLine}>{countLabel}</Text>
+        <Pressable onPress={onYouPress} hitSlop={8} accessibilityRole="button" accessibilityLabel="you">
+          <Text style={styles.youLink}>you</Text>
+        </Pressable>
       </View>
+      <Text style={styles.cityLine}>{countLabel}</Text>
 
       {/* Text tabs, not pills. Active gets a 2px green underline. */}
       <View style={styles.tabs}>
@@ -133,8 +148,8 @@ export default function QuestList() {
       ) : null}
     </ScrollView>
 
-      {/* The one create affordance — a pinned ink pill, always reachable while the chrome above
-          scrolls away. Ink, not a red/green FAB (DESIGN.md → colour rules). */}
+      {/* The one create affordance — a pinned ink button (4px radius, not a pill), always reachable
+          while the chrome above scrolls away. Ink, not a red/green FAB (DESIGN.md → colour rules). */}
       <Pressable
         style={styles.compose}
         onPress={() => router.push('/compose')}
@@ -143,6 +158,11 @@ export default function QuestList() {
       >
         <Text style={styles.composeLabel}>post a sidequest</Text>
       </Pressable>
+
+      {/* A stranger tapping "you" captures identity here, then lands on their (empty) log. */}
+      {showAuth ? (
+        <AuthSheet onClose={() => setShowAuth(false)} onAuthed={() => { setShowAuth(false); router.push('/you'); }} />
+      ) : null}
     </View>
   );
 }
@@ -167,16 +187,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
-    marginBottom: space.xl,
+    marginBottom: space.sm,
   },
   wordmark: {
     ...type.wordmark,
     color: color.brand, // green — identity only
   },
+  youLink: {
+    ...type.secondary, // matches the tab family — a nav affordance, not a stamped fact
+    color: color.ink,
+  },
   cityLine: {
     ...type.dataLine,
     color: color.inkMuted,
     fontVariant: ['tabular-nums'],
+    marginBottom: space.xl,
   },
   tabs: {
     flexDirection: 'row',
@@ -242,16 +267,13 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     height: 48,
     paddingHorizontal: space.xl,
-    borderRadius: 24,
+    // 4px, not a pill (DESIGN → Grid & radius: "buttons 4px. Nothing is a pill"). The ink fill on
+    // the bone feed carries its own separation; DESIGN deletes drop shadows product-wide ("a lifted
+    // card is lit paper, not a floating pane"), so no shadow — contrast does the lift.
+    borderRadius: layout.radiusButton,
     backgroundColor: color.ink,
     alignItems: 'center',
     justifyContent: 'center',
-    // A soft lift off the feed so it never reads as part of a tile.
-    shadowColor: color.ink,
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
   },
   composeLabel: {
     ...type.buttonLabel,

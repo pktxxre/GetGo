@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react-native';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
 import type { QuestDetail } from '../lib/quest';
 
 const mockReplace = jest.fn();
@@ -25,6 +25,24 @@ jest.mock('../lib/saves', () => ({
   saveQuest: (...a: any[]) => mockSaveQuest(...a),
   isSaved: (...a: any[]) => mockIsSaved(...a),
   mintTemplateFromPost: (...a: any[]) => mockMint(...a),
+}));
+
+const mockCast = jest.fn().mockResolvedValue(undefined);
+const mockRetract = jest.fn().mockResolvedValue(undefined);
+const mockMyRating = jest.fn().mockResolvedValue(null);
+jest.mock('../lib/ratings', () => ({
+  castRating: (...a: any[]) => mockCast(...a),
+  retractRating: (...a: any[]) => mockRetract(...a),
+  fetchMyRating: (...a: any[]) => mockMyRating(...a),
+}));
+
+// Stand in for the report sheet — the quest screen's concern is showing the link + opening it,
+// not the sheet's internals (those are report-sheet.test).
+jest.mock('../components/quest/ReportSheet', () => ({
+  ReportSheet: () => {
+    const { Text } = require('react-native');
+    return <Text>REPORT SHEET OPEN</Text>;
+  },
 }));
 
 import QuestDetailScreen from '../app/quest/[id]';
@@ -57,6 +75,9 @@ beforeEach(() => {
   mockIsSaved.mockClear();
   mockMint.mockClear();
   mockPush.mockClear();
+  mockCast.mockClear();
+  mockRetract.mockClear();
+  mockMyRating.mockClear().mockResolvedValue(null);
   mockSession = signedOut;
 });
 
@@ -102,7 +123,8 @@ describe('QuestDetail screen', () => {
     expect(mockSaveQuest).toHaveBeenCalledWith('u1', 'minted-t9'); // saved against the mint
   });
 
-  it('offers "i did this too" on a real quest, routing to compose in redo mode', () => {
+  it('offers "i did this too" on a real quest (signed in), routing to compose in redo mode', () => {
+    mockSession = signedIn;
     mockQuestState = { quest: quest(), status: 'ready', reload };
     render(<QuestDetailScreen />);
     fireEvent.press(screen.getByText('i did this too'));
@@ -112,7 +134,16 @@ describe('QuestDetail screen', () => {
     });
   });
 
+  it('hides "i did this too" from a signed-out stranger — a stranger gets exactly one verb (DESIGN)', () => {
+    mockSession = signedOut;
+    mockQuestState = { quest: quest(), status: 'ready', reload };
+    render(<QuestDetailScreen />);
+    expect(screen.getByText('save it')).toBeTruthy(); // the one verb a stranger gets
+    expect(screen.queryByText('i did this too')).toBeNull();
+  });
+
   it('hides "i did this too" on a first-of-its-kind post (no template to redo yet)', () => {
+    mockSession = signedIn;
     mockQuestState = { quest: quest({ templateId: null }), status: 'ready', reload };
     render(<QuestDetailScreen />);
     expect(screen.queryByText('i did this too')).toBeNull();
@@ -126,6 +157,56 @@ describe('QuestDetail screen', () => {
       pathname: '/user/[id]',
       params: { id: 'u-theo', handle: 'theo' },
     });
+  });
+
+  it('a stranger sees no rating buttons — just the one verb (save it)', () => {
+    mockQuestState = { quest: quest(), status: 'ready', reload };
+    render(<QuestDetailScreen />);
+    expect(screen.queryByText('awesome')).toBeNull();
+    expect(screen.queryByText('could be cooler')).toBeNull();
+  });
+
+  it('the author can’t rate their own quest (no self-rating)', () => {
+    mockSession = { ...signedIn, session: { user: { id: 'u-theo' } } }; // author id
+    mockQuestState = { quest: quest(), status: 'ready', reload };
+    render(<QuestDetailScreen />);
+    expect(screen.queryByText('could be cooler')).toBeNull();
+  });
+
+  it('a signed-in non-author casts a rating, and the sentence updates live', async () => {
+    mockSession = signedIn; // u1, not the author (u-theo)
+    mockQuestState = { quest: quest(), status: 'ready', reload };
+    render(<QuestDetailScreen />);
+    expect(screen.getByText('2 said awesome. 1 said could be cooler.')).toBeTruthy();
+    fireEvent.press(screen.getByText('awesome'));
+    expect(mockCast).toHaveBeenCalledWith('p1', 'u1', 'awesome');
+    expect(await screen.findByText('3 said awesome. 1 said could be cooler.')).toBeTruthy();
+  });
+
+  it('re-tapping your rating retracts it and rolls the count back', async () => {
+    mockSession = signedIn;
+    mockMyRating.mockResolvedValue('awesome'); // already rated on open
+    mockQuestState = { quest: quest(), status: 'ready', reload };
+    render(<QuestDetailScreen />);
+    // Wait for the fetched rating to mark the button active before re-tapping to retract.
+    await waitFor(() => expect(screen.getByLabelText('awesome').props.accessibilityState.selected).toBe(true));
+    fireEvent.press(screen.getByLabelText('awesome'));
+    expect(mockRetract).toHaveBeenCalledWith('p1', 'u1');
+    expect(await screen.findByText('1 said awesome. 1 said could be cooler.')).toBeTruthy();
+  });
+
+  it('a signed-in non-author can open the report sheet', () => {
+    mockSession = signedIn; // u1, not the author (u-theo)
+    mockQuestState = { quest: quest(), status: 'ready', reload };
+    render(<QuestDetailScreen />);
+    fireEvent.press(screen.getByText('report this quest'));
+    expect(screen.getByText('REPORT SHEET OPEN')).toBeTruthy();
+  });
+
+  it('a stranger and the author see no report link', () => {
+    mockQuestState = { quest: quest(), status: 'ready', reload };
+    render(<QuestDetailScreen />); // signedOut
+    expect(screen.queryByText('report this quest')).toBeNull();
   });
 
   it('a missing/invisible post is notFound, not an error', () => {

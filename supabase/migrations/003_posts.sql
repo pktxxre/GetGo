@@ -10,6 +10,11 @@
 -- city leaderboards (C4), completion_ordinal stamped at insert and NULL without a template
 -- (C5), soft delete so a removed post leaves the feed but its ledger history survives.
 
+-- Put extensions on the path (postgis was enabled in 002): the bare `geography` column and the
+-- gist default-opclass below don't resolve under db push's login role otherwise. See 002 for the
+-- full note; plain `set` because db push may not wrap each migration in a transaction.
+set search_path = public, extensions;
+
 create type post_visibility as enum ('public', 'private');
 
 create table public.posts (

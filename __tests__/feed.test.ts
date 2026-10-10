@@ -2,7 +2,7 @@
 // mapping/layout, not routing).
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }) }));
 
-import { toFeedItem } from '../lib/feed';
+import { toFeedItem, toSavedItem } from '../lib/feed';
 import { aspectRatio, photoUri, DEFAULT_TILE_ASPECT } from '../lib/photos';
 import { assignColumns, columnCountForWidth } from '../components/feed/Masonry';
 import { formatOrdinal } from '../lib/format';
@@ -45,6 +45,43 @@ describe('toFeedItem', () => {
   it('falls back to the post neighbourhood before a template is minted (019)', () => {
     const item = toFeedItem(row({ template: null, neighbourhood: 'Peckham' }) as any);
     expect(item.neighbourhood).toBe('Peckham');
+  });
+});
+
+describe('toSavedItem', () => {
+  const savedRow = (over: any = {}) => ({
+    id: 'p1',
+    caption: 'some redoer’s caption',
+    completion_ordinal: 1,
+    created_at: '2026-08-19T00:00:00Z',
+    neighbourhood: null,
+    template_id: 't1',
+    author: { handle: 'theo' },
+    template: { title: 'swim the serpentine at dawn', neighbourhood: 'Hyde Park' },
+    photos: [{ storage_path: 'https://x/1.jpg', idx: 0, width: 600, height: 800 }],
+    ...over,
+  });
+
+  it('shows the quest name (template title), not the post caption', () => {
+    const item = toSavedItem(savedRow() as any);
+    expect(item.caption).toBe('swim the serpentine at dawn');
+  });
+
+  it('carries no rarity ordinal — a saved log lists quests, not per-instance rank', () => {
+    const item = toSavedItem(savedRow() as any);
+    expect(item.ordinal).toBeNull();
+  });
+
+  it('takes the template neighbourhood and the origin photo', () => {
+    const item = toSavedItem(savedRow() as any);
+    expect(item.neighbourhood).toBe('Hyde Park');
+    expect(item.photo?.uri).toBe('https://x/1.jpg');
+  });
+
+  it('falls back to the post caption when the template is somehow title-less', () => {
+    const item = toSavedItem(savedRow({ template: { title: null, neighbourhood: null }, neighbourhood: 'Soho' }) as any);
+    expect(item.caption).toBe('some redoer’s caption');
+    expect(item.neighbourhood).toBe('Soho');
   });
 });
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { color, layout, space, type } from '../theme/tokens';
@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase';
 import { createPost, poundsToPence, type NewPostVisibility, type PhotoInput } from '../lib/posts';
 import { captureLocation, type CapturedLocation } from '../lib/location';
 import { BackLink } from '../components/shell/BackLink';
+import { GradedImage } from '../components/GradedImage';
 import { AuthSheet } from '../components/auth/AuthSheet';
 
 /**
@@ -136,7 +137,7 @@ export default function Compose() {
               reflows once a photo lands (DESIGN.md → Motion). */}
           {photo ? (
             <View>
-              <Image source={{ uri: photo.uri }} style={styles.preview} resizeMode="cover" accessibilityLabel="your photo" />
+              <GradedImage source={{ uri: photo.uri }} style={styles.preview} accessibilityLabel="your photo" />
               <Pressable onPress={() => setPhoto(null)} hitSlop={8}>
                 <Text style={styles.replace}>replace photo</Text>
               </Pressable>
@@ -234,6 +235,15 @@ export default function Compose() {
               </Pressable>
             ))}
           </View>
+
+          {/* Agreement at participation (App Store Guideline 1.2): posting means agreeing to the
+              content policy. The link is the full guidelines; the sentence carries the no-tolerance
+              stance so it reads even without tapping through. */}
+          <Text style={styles.agree}>
+            by posting, you agree to the{' '}
+            <Text style={styles.agreeLink} onPress={() => router.push('/guidelines')}>community guidelines</Text>
+            {' '}— zero tolerance for objectionable content.
+          </Text>
         </View>
       </ScrollView>
 
@@ -374,6 +384,8 @@ const styles = StyleSheet.create({
   visRow: { flexDirection: 'row', gap: space.xl },
   visOption: { ...type.dataLine, color: color.inkMuted },
   visOptionActive: { color: color.ink },
+  agree: { ...type.secondary, color: color.inkMuted, marginTop: space.sm },
+  agreeLink: { color: color.ink, textDecorationLine: 'underline' },
   actionBar: {
     position: 'absolute',
     left: 0,

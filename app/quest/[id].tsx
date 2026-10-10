@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { color, layout, space, type } from '../../theme/tokens';
 import { useQuest } from '../../hooks/useQuest';
 import { useSession } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
 import { isSaved as fetchIsSaved, mintTemplateFromPost, saveQuest } from '../../lib/saves';
+import { castRating, fetchMyRating, retractRating, type RatingValue } from '../../lib/ratings';
 import { StateScreen } from '../../components/shell/StateScreen';
 import { BackLink } from '../../components/shell/BackLink';
+import { GradedImage } from '../../components/GradedImage';
 import { StampBlock } from '../../components/quest/StampBlock';
 import { SaveStamp } from '../../components/quest/SaveStamp';
 import { AuthSheet } from '../../components/auth/AuthSheet';
+import { ReportSheet } from '../../components/quest/ReportSheet';
 import { Placeholder } from '../../components/shell/Placeholder';
 import { SHELL_COPY } from '../../components/shell/copy';
 import { receptionSentence } from '../../lib/format';
@@ -25,7 +28,39 @@ export default function QuestDetail() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showAuth, setShowAuth] = useState(false);
 
+  // Reception is kept in local state so a cast rating updates the sentence live. Seeded from the
+  // fetched quest (which already includes every visible rating, mine included), then nudged by
+  // the delta of each cast/switch/retract — no refetch, no double-count.
+  const [awesome, setAwesome] = useState(0);
+  const [couldBeCooler, setCouldBeCooler] = useState(0);
+  const [myRating, setMyRating] = useState<RatingValue | null>(null);
+  const [rateError, setRateError] = useState<string | null>(null);
+  const [showReport, setShowReport] = useState(false);
+
   const templateId = quest?.templateId ?? null;
+  const uid = session?.user?.id;
+  // Rating critiques the quest, never the person: only a signed-in viewer who isn't the author
+  // can rate (mirrors the 005 RLS — no self-rating). A stranger gets exactly one verb (save it).
+  const canRate = !!uid && !!quest && uid !== quest.authorId;
+
+  // Seed the reception counts once the quest resolves.
+  useEffect(() => {
+    if (!quest) return;
+    setAwesome(quest.awesome);
+    setCouldBeCooler(quest.couldBeCooler);
+  }, [quest?.id, quest?.awesome, quest?.couldBeCooler]);
+
+  // Reflect an existing rating so the right button reads as active on open.
+  useEffect(() => {
+    if (!uid || !quest || uid === quest.authorId) return;
+    let live = true;
+    fetchMyRating(quest.id, uid)
+      .then((v) => live && setMyRating(v))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [uid, quest?.id, quest?.authorId]);
 
   // Reflect an existing save when the screen opens signed-in — the stamp is already earned.
   useEffect(() => {
@@ -70,6 +105,29 @@ export default function QuestDetail() {
     if (uid) doSave(uid);
   };
 
+  // Tapping a rating: the one you already picked retracts it, the other switches. Optimistic —
+  // the sentence moves immediately; a failed write reverts and surfaces inline (never a toast).
+  const onRate = async (value: RatingValue) => {
+    if (!uid || !quest) return;
+    const prev = myRating;
+    const next = prev === value ? null : value; // re-tap = retract
+    const shift = (from: RatingValue | null, to: RatingValue | null) => {
+      setAwesome((a) => a - (from === 'awesome' ? 1 : 0) + (to === 'awesome' ? 1 : 0));
+      setCouldBeCooler((c) => c - (from === 'could_be_cooler' ? 1 : 0) + (to === 'could_be_cooler' ? 1 : 0));
+    };
+    setRateError(null);
+    shift(prev, next);
+    setMyRating(next);
+    try {
+      if (next === null) await retractRating(quest.id, uid);
+      else await castRating(quest.id, uid, value);
+    } catch {
+      shift(next, prev); // put the counts back
+      setMyRating(prev);
+      setRateError('couldn’t save that — give it another go.');
+    }
+  };
+
   if (status === 'notFound') return <StateScreen kind="notFound" />;
   if (status === 'error') return <StateScreen kind="failed" onPrimary={reload} />;
 
@@ -97,7 +155,7 @@ export default function QuestDetail() {
       <ScrollView style={styles.page} contentContainerStyle={styles.scrollContent}>
         {/* Hero, full-bleed 4:5, running under the status bar. Nothing floats on it. */}
         {hero ? (
-          <Image source={{ uri: hero.uri }} style={styles.hero} resizeMode="cover" accessibilityLabel={quest.caption ?? undefined} />
+          <GradedImage source={{ uri: hero.uri }} style={styles.hero} accessibilityLabel={quest.caption ?? undefined} />
         ) : (
           <View style={[styles.hero, styles.heroMissing]} />
         )}
@@ -132,8 +190,45 @@ export default function QuestDetail() {
             )
           ) : null}
 
-          {/* Reception is a sentence, not a widget. No hearts, no bars. */}
-          <Text style={styles.reception}>{receptionSentence(quest.awesome, quest.couldBeCooler)}</Text>
+          {/* Reception is a sentence, not a widget. No hearts, no bars. Live off local counts so
+              a cast rating updates it immediately. */}
+          <Text style={styles.reception}>{receptionSentence(awesome, couldBeCooler)}</Text>
+
+          {/* The two rating buttons — critique the quest, never the person. Ink, 4px (not pills,
+              DESIGN → Deleted on purpose), in the body: the sticky bar's one verb stays `save it`.
+              Hidden for a stranger and for the author (RLS blocks self-rating anyway). */}
+          {canRate ? (
+            <View style={styles.rate}>
+              <View style={styles.rateRow}>
+                {(['awesome', 'could_be_cooler'] as RatingValue[]).map((value) => {
+                  const active = myRating === value;
+                  const label = value === 'awesome' ? 'awesome' : 'could be cooler';
+                  return (
+                    <Pressable
+                      key={value}
+                      onPress={() => onRate(value)}
+                      style={[styles.rateButton, active && styles.rateButtonActive]}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={label}
+                    >
+                      <Text style={[styles.rateLabel, active && styles.rateLabelActive]}>{label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {rateError ? <Text style={styles.saveError}>{rateError}</Text> : null}
+            </View>
+          ) : null}
+
+          {/* The report affordance (W3 / Guideline 1.2). Deliberately understated and below the
+              fold — a muted mono link, not chrome in the first viewport. Signed-in non-author only
+              (a stranger gets the one verb; the author would delete, not flag; RLS blocks both). */}
+          {canRate ? (
+            <Pressable onPress={() => setShowReport(true)} hitSlop={8} accessibilityRole="button">
+              <Text style={styles.report}>report this quest</Text>
+            </Pressable>
+          ) : null}
         </View>
       </ScrollView>
 
@@ -154,8 +249,10 @@ export default function QuestDetail() {
 
         {/* The second verb. Only offered once the quest is a real template — a first-of-its-kind
             post is saved first (which mints, 015), then it can be redone. Opens compose in redo
-            mode, carrying the template so create_post stamps the next ordinal. */}
-        {templateId ? (
+            mode, carrying the template so create_post stamps the next ordinal. Signed-in only:
+            DESIGN → Quest detail says a stranger gets exactly one verb (`save it`); a signed-out
+            visitor must not see this second verb. */}
+        {templateId && uid ? (
           <Pressable
             onPress={() =>
               router.push({ pathname: '/compose', params: { templateId, questTitle: quest.title ?? '' } })
@@ -169,6 +266,9 @@ export default function QuestDetail() {
       </View>
 
       {showAuth ? <AuthSheet onClose={() => setShowAuth(false)} onAuthed={onAuthed} /> : null}
+      {showReport && uid ? (
+        <ReportSheet postId={quest.id} reporterId={uid} onClose={() => setShowReport(false)} />
+      ) : null}
     </View>
   );
 }
@@ -220,6 +320,36 @@ const styles = StyleSheet.create({
   reception: {
     ...type.secondary,
     color: color.inkMuted,
+  },
+  rate: {
+    gap: space.sm,
+  },
+  rateRow: {
+    flexDirection: 'row',
+    gap: space.sm,
+  },
+  rateButton: {
+    borderWidth: 1,
+    borderColor: color.ink,
+    borderRadius: layout.radiusButton, // 4px — not a pill
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+  },
+  rateButtonActive: {
+    backgroundColor: color.ink,
+  },
+  rateLabel: {
+    ...type.buttonLabel,
+    color: color.ink,
+  },
+  rateLabelActive: {
+    color: color.ground,
+  },
+  report: {
+    ...type.dataLine,
+    color: color.inkMuted,
+    textDecorationLine: 'underline',
+    marginTop: space.sm,
   },
   actionBar: {
     position: 'absolute',

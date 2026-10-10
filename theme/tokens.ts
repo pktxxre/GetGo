@@ -59,6 +59,23 @@ export const font = {
   mono: 'MartianMono_500Medium',
 } as const;
 
+/**
+ * System-wide image grade (DESIGN.md → Image grade): "+3 warmth, −6 saturation, 4% monochrome
+ * grain" on every photo, every surface. It's the only quality control on 100%-amateur UGC — it
+ * makes a blown-out midday shot and a grainy 11pm shot read as one archive. Applied by
+ * <GradedImage>, never per-call and never user-adjustable. Values live HERE (one tuning point):
+ * DESIGN flags them approved against placeholder photography and needing revalidation against
+ * real London phone photos, so expect to nudge these once real supply exists.
+ *
+ * All three layers ship: warmth + desaturation are the load-bearing colour correction, grain is
+ * the texture pass (a tiled grayscale noise, assets/noise.png — regenerate with scripts/gen-noise.mjs).
+ */
+export const grade = {
+  saturate: 0.94, // −6% saturation, via the RN `filter` style
+  warmth: 'rgba(255, 168, 92, 0.05)', // +3 warmth: a faint amber overlay (filters have no temperature)
+  grain: 0.04, // 4% monochrome grain: opacity of the tiled noise overlay
+} as const;
+
 // Type scale (mobile, 390pt). role -> style fragment. Weight lives in the family name, so no
 // fontWeight here (setting it alongside a single-weight custom family risks a faux-bold).
 export const type = {

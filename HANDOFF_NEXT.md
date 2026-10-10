@@ -3,6 +3,210 @@
 For the *why* behind decisions, read `CLAUDE.md`, `DESIGN.md`, `SHELL_SPEC.md`, and the
 original `HANDOFF.md`. This file is the running "what do I do next" log — newest update first.
 
+## Update — 2026-09-15: hosted backend migrated + block-user + content-policy (uncommitted)
+
+Three things landed this session. **All green: pgTAP 198 · Jest 146 · tsc clean · web 9 routes.**
+
+1. **The hosted backend is finally migrated** — the weeks-long blocker for any public link is
+   gone. The hosted `getgo` project (`gjrioxuvkohfptpxpmja`, eu-west-3) went from zero migrations
+   to the **full schema through 024**. The old assumption that we couldn't push (only the
+   publishable key on hand) was **wrong**: the Supabase **CLI is already authenticated** with a
+   stored access token, so `link` + `db push` work with no DB password. **⚠️ 025 (blocks) is NOT
+   yet pushed to hosted — it's at 024.** Run `supabase db push --linked` to catch it up.
+   - Fixed a real portability bug the push surfaced: **002/003** used the bare `geography` type +
+     gist opclass, relying on `extensions` being on the ambient search_path (true locally, false
+     under db push's login role). Added `set search_path = public, extensions;` to both. Verified
+     by a local `db reset` replay and a clean hosted push.
+
+2. **block-user (025)** — the block half of Guideline 1.2 (report was 024). A `blocks` table
+   (own-row RLS like saves) + a one-clause extension to the **hot-path `posts_visible`** policy so
+   a blocked author's posts drop out of the blocker's feed/nearby/profile/detail. Deliberately
+   one-directional + viewer-scoped (no comment/DM surface to sever the other way; fits per-post
+   privacy). `lib/blocks.ts` + a block/unblock control on `app/user/[id].tsx` (ink, never red;
+   when blocked the grid is hidden, not shown with misleading "no quests yet"). pgTAP **+12**
+   (198), Jest **+9**. Also fixed a latent test-hygiene bug: `reset role` doesn't clear
+   `request.jwt.claims`, so an anon test must clear the claim to truly be anonymous.
+
+3. **Content policy + contact** — the last Guideline 1.2 piece (EULA/agreement, published
+   contact). New **`app/guidelines.tsx`** (zero-tolerance stance, prohibited list, report+block
+   pointers, 24h commitment, contact), reachable from **settings** ("community guidelines" +
+   "contact us") and linked from **compose** as the agreement-at-post-time. `lib/support.ts` holds
+   the contact. **⚠️ `SUPPORT_EMAIL` is a PLACEHOLDER (`hello@getgo.app`) — must be a real,
+   monitored inbox before App Store submission** (reviewers + abuse reports email it). Jest **+7**,
+   web **+1 route** (`/guidelines`).
+
+**Compliance kit for Guideline 1.2 is now complete (4/4):** delete_account (023), report (024),
+block (025), content-policy+contact. Ten features now stacked uncommitted on
+`pktxxre/continue-building-v1`.
+
+**Recommended next:** (1) push 025 to hosted (`supabase db push --linked`); (2) swap the
+`SUPPORT_EMAIL` placeholder; (3) `/design-review` the batch (block control, guidelines, and the
+compose agreement line were built without a DESIGN spec, like the rest of this stack); (4) then the
+**Validation Gate** (T18 web funnel + T19 analytics) or `/ship` the whole batch.
+
+## Update — 2026-09-05: self-profile + settings — delete_account gets its door (uncommitted)
+
+The compliance gate is now reachable. `delete_account` (023) + `lib/account` shipped last session
+but nothing in the app could call them — there was no "me" surface at all (you reach a profile only
+by tapping a byline, never your own). This session adds the **self-nav front door → your quests →
+settings → delete** path, which is also the home "your own quests" never had. Built on
+`pktxxre/continue-building-v1`, stacked on the image-grade (T11) + delete_account (T9) work.
+
+- **`app/you.tsx`** (new) — your own quests. The same grid as `/user/[id]` scoped to yourself
+  (reuses `useUserPosts` + `Masonry` + the state components — no new visual language), plus a
+  `settings` link. RLS already means "your own page shows your private posts", so no `is this me?`
+  branch. Self-specific empty copy (`emptySelf`/`emptySelfBody` in `shell/copy`). A signed-out cold
+  deep link gets the `AuthSheet`, then the grid fills in once the session context updates.
+- **`app/settings.tsx`** (new) — the account surface, the only home for **sign out** and **delete
+  account**. Delete is behind an explicit second-step confirm (irreversible + signs you out for
+  good). The confirm copy states the invariant plainly: your posted quests **stay in the archive**
+  (other people's rarity/ordinals must not shift — CLAUDE.md), so it promises a tombstone, not a
+  clean erase. Colour discipline held: the destructive action is **ink**, the warning leans on
+  brick `error` — red is never a button (DESIGN). Failure surfaces inline, no toast, no navigation.
+- **`app/index.tsx`** — the entry point: a **"you" link** in the front-door chrome (top row now
+  `getgo … you`, city line dropped to its own line under it). Signed-in → `/you`; a stranger gets
+  the `AuthSheet` first, then lands on their (empty) log — the same auth-at-intent shape as `save it`.
+- **⚠️ This touches the front door.** The chrome restructure + the "you" affordance are the one
+  judgment call this session and have **no DESIGN.md spec** — worth a `/design-review` before ship
+  (mirrors the same flag `/user/[id]` carried). `you` uses `type.secondary` to match the tab family.
+- **Verified** — `tsc` clean, Jest **99** (+14: settings ×7 [identity, sign-out, confirm-gate,
+  delete, keep-it, inline-fail, signed-out bounce], you ×5, front-door "you" door ×2), web export
+  builds all **8 routes** (`/you` + `/settings` newly registered). pgTAP unchanged (no DB touched).
+- **Deferred (noted, not built):** a **saved collection** on `/you` — "gives saves a home" from the
+  old rec #1 — needs a new template→representative-photo query (saves target templates, tiles render
+  posts), so it's its own data-layer slice. `/you` is quests-only for now.
+
+## Update — 2026-09-05 (cont.): saved collection — /you gets its second tab (uncommitted)
+
+Finished the deferred piece above: the **saved log** now has a home. `/you` is two text tabs
+(same idiom as the front door) — **quests** (what you posted) and **saved** (what you saved to do).
+
+- **`lib/feed.ts`** — `fetchSavedQuests(userId)` + pure `toSavedItem`. A save targets a *template*
+  (005) but detail is keyed by a *post*, so each saved template is shown by its canonical **origin
+  post** (lowest `completion_ordinal` — the 1st-ever instance whose title/photo defined the quest);
+  tapping opens that quest. Two round trips on purpose: saved template ids in *save* order first,
+  then their posts, so the collection keeps save order, not post recency. `saves_own_read` +
+  `posts_visible` RLS scope it; a template whose origin isn't visible drops out quietly.
+- **Design call (no spec, flagged):** a saved tile is shown by its **quest name** (template title),
+  **not** a per-instance caption, and carries **no red ordinal** — a saved log lists quests-to-do,
+  so a column of red "1ST"s would read flat *and* dilute the rarity mark (DESIGN: red is the one
+  fact, not decoration). Reuses `QuestTile`/`Masonry` unchanged (null `ordinal` → no red). Worth
+  folding into the same `/design-review` as the "you" affordance.
+- **`hooks/useSavedQuests.ts`** — lazy like `useNearby`: nothing loads until the saved tab is
+  selected, so opening your profile for your quests never pays for the saved query.
+- **`app/you.tsx`** — the two-tab toggle; saved has its own empty copy (`emptySaved`/…Body).
+- **Verified** — `tsc` clean, Jest **105** (+6: `toSavedItem` ×4, saved tab renders + empty ×2),
+  web export builds all **8 routes**. No migration/new DB objects (pure client over existing RLS,
+  like `fetchUserPosts`), so pgTAP unchanged (**175**).
+
+**Recommended next:** (1) `/design-review` the front-door "you" affordance + the settings +
+saved-tile choices before ship; (2) **the Validation Gate** (T18 web funnel + T19 analytics);
+(3) the **hosted-backend migration** (still un-migrated, now through 023 — needs the hosted DB
+password or an access token, blocker for any public link). Four features now stacked uncommitted:
+image grade (T11), delete_account (T9), self-profile/settings, and the saved collection — all
+green (pgTAP 175 · Jest 105 · tsc clean · web 8 routes). Ready for `/ship`.
+
+## Update — 2026-09-05 (cont.): rating UI — the last open verb in the core loop (uncommitted)
+
+The `ratings` table + RLS shipped in **005** and quest detail always showed a reception *sentence*,
+but there was **no way to actually cast a rating** — "others rate them" was a display, not an
+action. Now it's a real verb. No migration: the DB contract (upsert on the unique key, update,
+delete, no-self-rating, can't-rate-invisible) was already built and pgTAP-proven; this is pure
+client over it.
+
+- **`lib/ratings.ts`** (new) — `castRating` (upsert on the `(post_id, rater_id)` unique key, so
+  switching your vote never trips the duplicate), `retractRating` (keyed delete), `fetchMyRating`
+  (drives the active button). **No XP at cast time** — reception XP is median-relative and
+  finalised weekly (phase 2), so casting only writes the row.
+- **`app/quest/[id].tsx`** — two buttons below the reception sentence: `awesome` / `could be
+  cooler`. Ink, **4px (not pills** — DESIGN "Deleted on purpose"), in the **body**, never the
+  sticky bar (a stranger's one verb stays `save it`). Shown only to a **signed-in non-author**
+  (mirrors the RLS — no self-rating; a stranger sees none). Re-tapping your choice **retracts**;
+  the other switches. **Optimistic** — the reception sentence moves immediately off local counts
+  (seeded from the fetched quest, which already includes your prior rating, then nudged by the
+  delta), reverting inline on a failed write (never a toast).
+- **Verified** — `tsc` clean, Jest **114** (+9: `ratings` lib ×5 [upsert key, reject, keyed
+  delete, my-rating value/null], quest-detail ×4 [stranger/author hidden, cast updates sentence,
+  re-tap retracts + rolls back]), web export builds all 8 routes. pgTAP unchanged (**175** — no DB
+  touched; the 005 policies already cover the invariants, and an RLS "test" in Jest proves nothing).
+
+**Core loop is now complete end-to-end:** browse → detail → save → post → redo → **rate** → your
+profile/saved log → delete account. Five features stacked uncommitted on
+`pktxxre/continue-building-v1`: image grade (T11), delete_account (T9), self-profile/settings,
+saved collection, and this rating UI — all green (pgTAP 175 · Jest 114 · tsc clean · web 8 routes).
+
+**Recommended next (unchanged priorities):** (1) `/design-review` the batch before ship (the "you"
+affordance, settings, saved-tile, and now the rating buttons were all built without a DESIGN spec);
+(2) **the Validation Gate** — T18 web funnel + T19 analytics, the launch instrument; (3) the
+**hosted-backend migration** (still un-migrated, now through 023 — needs the hosted DB password or
+an access token, blocker for any public link). Then the App Store gate: W3 compliance kit
+(report/block/contact + policy/EULA/labels), native auth, EAS/TestFlight, Maestro.
+
+## Update — 2026-09-14: report-content — the first App-Store compliance piece (uncommitted)
+
+W3 / **App Store Guideline 1.2** requires a UGC app to ship, *at review*, a mechanism for users to
+flag objectionable content. Built it — the first of the compliance kit (delete_account was the
+other; block-user + published contact + policy/EULA/labels still remain). New migration **024**.
+
+- **`024_reports.sql`** — a `reports` table (post_id, reporter_id, `report_reason` enum
+  [spam/nudity/violence/hate/other], optional note 1..500, one-per-reporter unique). RLS mirrors
+  005's ratings exactly: **own-row insert, only on a post you can see, never your own post**, no
+  anon. **No update/delete policy** — a flag isn't client-retractable; acting on reports is
+  out-of-band moderation over the **service role** (never a client capability, so no policy grants
+  anyone power to hide another user's post).
+- **`lib/reports.ts`** — `reportPost` (+ `REPORT_REASONS` labels); trims an empty note to null so
+  it can't trip the length check; a `23505` duplicate is surfaced kindly.
+- **`components/quest/ReportSheet.tsx`** — AuthSheet-style bone overlay: pick a reason, optional
+  note, send → a plain "thanks, we'll take a look" (no promised outcome — moderation is out of
+  band). Reasons are 4px rows, not pills.
+- **`app/quest/[id].tsx`** — a **muted "report this quest"** link below the fold (not chrome in the
+  first viewport), signed-in non-author only (same gate as rating; a stranger keeps the one verb,
+  the author would delete not flag, and RLS blocks both).
+- **⚠️ pgTAP 024 was written but NOT executed this session.** `supabase db reset` needs to re-pull
+  the postgres image and the local disk was full (94%, ~1Gi free) → `input/output error` on the
+  containerd metadata db — the exact disk-full crash this handoff keeps warning about. Colima was
+  started then stopped clean; **no local DB ran.** `024_reports_test.sql` is written to mirror
+  `005_social_test` / `023` precisely (11 assertions: table, no-self-report, one-per-reporter,
+  report-as-someone-else, invisible-post, note-length, private-to-reporter, anon-blocked). **First
+  job next session on a healthy disk: `supabase db reset && supabase test db`** to confirm 024 (and
+  the whole suite) green — expect **pgTAP 186** (+11) if it passes as written.
+- **Verified (what the environment allowed):** `tsc` clean, Jest **125** (+11: `reports` lib ×5,
+  `ReportSheet` ×4, quest-detail report link ×2), web export builds all 8 routes.
+
+Six features now stacked uncommitted on `pktxxre/continue-building-v1`: image grade (T11),
+delete_account (T9), self-profile/settings, saved collection, rating UI, and report-content — Jest
+125 · tsc clean · web 8 routes, **pgTAP unverified locally (disk)** — must be re-run before `/ship`.
+
+## Update — 2026-09-14 (cont.): S7 OfflineBanner — the connection strip (uncommitted)
+
+Chosen deliberately as a **client-only, no-migration** piece so 024's untested SQL isn't stacked
+under a *second* unverifiable migration while the local disk is full. Closes a long-standing
+SHELL_SPEC gap: the `offline` copy string existed but nothing wired it, so losing signal mid-scroll
+just blanked whatever was loaded.
+
+- **`components/shell/OfflineBanner.tsx`** (new) — subscribes to `@react-native-community/netinfo`
+  (installed via `npx expo install`, 12.0.1 — SDK-57, covers web too). A brick (`color.error`) strip
+  with bone mono `NO CONNECTION` — brick, never pure red (DESIGN colour rule). Renders `null` while
+  connected. **Committed state debounced 2s** so a flap (tunnel/lift) never flashes the strip or
+  re-announces it; `isConnected === false` is the only offline signal, `null` (unknown) counts as
+  connected so it never cries wolf. Subscription is in an effect (never runs in web prerender) with
+  a belt-and-braces SSR guard.
+- **`app/_layout.tsx`** — mounted once above the `Stack` inside a `flex:1` bone `View`, so the strip
+  slides in over kept content instead of replacing it.
+- **Verified** — `tsc` clean, Jest **130** (+5: connected→null, 2s debounce not instant, flap
+  suppressed, null-safe, unsub on unmount — via fake timers + a captured netinfo listener), web
+  export builds all 8 routes (netinfo didn't break SSR prerender, the async-storage-style risk).
+
+**Shell remaining:** S8 `<InlineError>` (a shared component — failures are currently handled ad hoc
+inline per screen; extracting it is cleanup, not a gap), S10/S11 (web/native split + focus/contrast
+test). None blocking.
+
+Seven features now stacked uncommitted on `pktxxre/continue-building-v1`: image grade (T11),
+delete_account (T9), self-profile/settings, saved collection, rating UI, report-content (**pgTAP
+024 unrun — disk**), and S7 OfflineBanner. Jest 130 · tsc clean · web 8 routes. **Before `/ship`:
+`supabase db reset && supabase test db` on a healthy disk** to confirm 024 + the whole suite
+(expect pgTAP 186).
+
 ## ▶ START HERE — current state (2026-08-30, end of session)
 
 **PR #4 is OPEN, not yet merged** (`https://github.com/pktxxre/GetGo/pull/4`), on branch
@@ -18,16 +222,59 @@ profile** (tap a byline), **post-time location capture**, **cross-restart sessio
 tsc clean · web build (6 routes)**, plus an iOS-Simulator design pass (report + before/after shots
 in `~/.gstack/projects/pktxxre-GetGo/ios-design-review-20260828/`).
 
+## Update — 2026-08-31: delete_account (T9) — invariant-preserving teardown (uncommitted)
+
+The App-Store/compliance gate, done right. The FK graph makes a naive delete catastrophic —
+`auth.users → users → posts/ratings/saves/xp_ledger` are ALL `on delete cascade`, so cascading
+would hard-delete the user's posts (shifting everyone else's rarity + stamped ordinals) AND their
+ratings (half of other posts' reception counts). Both rewrite other people's history, which
+CLAUDE.md forbids. The schema already anticipated this (`users.tombstoned_at` + RLS hiding
+tombstoned rows, "see delete_account later"), so teardown is a **tombstone, never a cascade**.
+
+- **`023_delete_account.sql`** — `delete_account()` (SECURITY DEFINER, caller-scoped, no target
+  param): tombstones + scrubs the profile (handle/bio/avatar → NULL; nulling handle frees it),
+  soft-deletes the user's posts (rows survive so `create_post`'s count-incl-deleted keeps rarity +
+  ordinals stable), and **bans + scrubs the auth.users row** (`banned_until = 'infinity'`, email →
+  a per-uid tombstone, phone/metadata cleared) so they can't sign back in — without deleting it
+  (that's the cascade trigger). Ratings/saves/xp_ledger are LEFT ALONE (append-only / others'
+  reception).
+- **`lib/account.ts`** — `deleteAccount()` fires the RPC then `signOut()`. **`__tests__/account.test.ts`**.
+- **pgTAP 175** (+15): the load-bearing invariant (bystander's ordinal, rarity count, and the
+  deleter's rating on the bystander's post all survive), plus the teardown (tombstone, scrub,
+  soft-delete, auth ban, RLS-hidden profile, signed-in-only). Jest **85** (+2), `tsc` clean.
+- **Remaining: no UI entry.** There's no settings/self-profile screen to reach `deleteAccount()`
+  from (same self-nav gap the profile has — you reach a profile by tapping a byline, never "your
+  own"). The compliance-critical RPC + client contract are done + tested; the settings surface +
+  a confirm dialog are the follow-up (App Store needs an in-app delete path).
+
+## Update — 2026-08-30 (cont.): image grade T11 — full grade ships (uncommitted)
+
+On a fresh branch `pktxxre/keep-building-v1` off `main` (which now has v0.4.0.0). Built the
+DESIGN.md system-wide image grade **in full**: every photo now renders through **`<GradedImage>`**
+— never a bare `<Image>` — applying all three layers: **−6% saturation** (RN `filter` style),
+**+3 warmth** (amber overlay), and **4% monochrome grain** (a tiled grayscale noise texture). This
+is the "only quality control on 100%-amateur UGC" (DESIGN): on-device the whole feed reads as one
+warm, film-grained archive instead of a mix of good/bad phones. Verified on the iOS Simulator
+(`09-feed-graded.png` colour grade, `10-feed-grain.png`/`10-crop.png` grain) — the filter applies
+on New Arch, photos aren't broken, masonry doesn't reflow.
+
+- **`theme/tokens.ts`** — `grade` constant (one tuning point; DESIGN flags the values need
+  revalidating against real London photos). **`components/GradedImage.tsx`** (new). Swapped
+  `<Image>` → `<GradedImage>` in `QuestTile` (feed + profile), quest hero, compose preview.
+- **`assets/noise.png`** — 128×128 grayscale noise, tiled via `resizeMode="repeat"` at
+  `grade.grain` opacity. Generated dependency-free by **`scripts/gen-noise.mjs`** (built-in zlib +
+  hand-rolled CRC32; re-run to regenerate).
+- **Verified** — `tsc` clean, Jest **83** (+2: GradedImage renders + applies the full grade), web
+  export builds all 6 routes (bundles the asset), on-device screenshots confirm. **Uncommitted** —
+  `/ship` it.
+
 **Recommended next (all unblocked except the last):**
-1. **Image grade (T11)** — DESIGN.md's `+3 warmth / −6 saturation / 4% grain` on every photo is
-   specified and still unimplemented. Technical choice open (RN `filter` style prop on 0.86 New
-   Arch, or a color-matrix lib; grain needs a noise overlay asset). DESIGN itself flags it needs
-   validating against real London photos.
-2. **`delete_account` (T9)** — App-Store/compliance gate. **Must anonymise/soft-delete, not
-   cascade** (a hard delete of a user's posts would shift others' rarity/ordinals — CLAUDE.md
-   invariant). Check the `users → auth.users` FK before designing; worth a `/spec` pass.
-3. **The Validation Gate** — T18 web funnel + T19 analytics. The launch instrument.
-4. **Hosted-backend migration (blocker for any public link)** — hosted project still has **no
+1. **A settings / self-profile surface** — unblocks the `delete_account` UI entry (RPC + `lib/account`
+   done, 023), and gives "your own quests"/saves a home. Needs a self-nav decision (no "me" entry
+   exists — you only reach profiles by tapping a byline). Worth a design/`/spec` pass since it
+   touches the front door.
+2. **The Validation Gate** — T18 web funnel + T19 analytics. The launch instrument.
+3. **Hosted-backend migration (blocker for any public link)** — hosted project still has **no
    migrations applied** (now through 022). Needs the hosted DB password or a Supabase access
    token; only the publishable key is on hand, which can't push. This gates everything user-facing.
 
